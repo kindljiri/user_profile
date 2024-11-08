@@ -1,0 +1,596 @@
+#! /bin/sh
+
+# Library of functions to manipulate and calculat IPs for IPv4
+#This Library below contains its own documentation just do:
+#grep "#DOC: " libip | sed 's/[ \t]*#DOC://'
+
+#Variables:
+libipAuthor='Jiri Kindl'
+libipVersion='20240929'
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: libip
+#DOC: DESCRIPTION: Library of functions to manipulate and calculat IPs for IPv4
+#DOC: 
+
+#DOC: getLibipVersion 
+#DOC:   NAME 
+#DOC:     getLibipVersion - Print libip version 
+#DOC:   SYNOPSIS 
+#DOC:     getLibipVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print libip version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getLibipVersion() {
+  echo $libipVersion
+  return 0
+}
+
+#DOC: isValidIP IP
+#DOC:   NAME
+#DOC:     isValidIP - checks if the given IP address is valid
+#DOC:   SYNOPSIS
+#DOC:     isValidIP IP
+#DOC:   DESCRIPTION
+#DOC:     Accepts an IP address as a required argument and returns 0 if the IP address is valid, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     isValidIP 127.0.0.1
+#DOC: 
+isValidIP() {
+  local counter=0
+  local retval=0
+  local o
+  local ip=$1
+  if $(echo "$ip" | grep -q -E "^([0-9]+\.){3}[0-9]+$")
+  then
+  for o in $(echo $ip | sed 's/\./ /g')
+  do
+    if [ $o -gt -1 -a $o -lt 256 ]
+    then
+      counter=$(expr $counter + 1)
+    else
+      retval=1
+    fi
+  done
+  else
+    retval=1
+  fi
+  return $retval
+}
+
+#DOC: isValidMask MASK
+#DOC:   NAME
+#DOC:     isValidMask - checks if the given mask is a valid subnet mask
+#DOC:   SYNOPSIS
+#DOC:     isValidMask MASK
+#DOC:   DESCRIPTION
+#DOC:     Accepts a mask as a required argument and returns 0 if the mask is valid, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     isValidMask 255.255.255.0
+#DOC: 
+isValidMask() {
+  local retval=1
+  local binmask
+  local binmasklen
+  local mask=$1
+  if $(isValidIP $mask)
+  then
+    binmask=$(ip2bin $mask)
+    if $(echo $binmask | grep -q -E "^1+0+$")
+    then
+      binmasklen=$( echo $binmask | wc -c )
+      #check 33 because wc -c count also new line added by echo
+      if [ $binmasklen -eq 33 ]
+      then
+        retval=0
+      fi
+    fi
+  fi
+  return $retval
+}
+
+#DOC: isValidPrivateIP IP
+#DOC:   NAME
+#DOC:     isValidPrivateIP - checks if the given IP address is a valid private IP address
+#DOC:   SYNOPSIS
+#DOC:     isValidPrivateIP IP
+#DOC:   DESCRIPTION
+#DOC:     Accepts an IP address as a required argument and returns 0 if the IP address is a valid private IP address, 1 otherwise.
+#DOC:     Private IP address ranges:
+#DOC:       - 10.0.0.0 - 10.255.255.255 (10/8 prefix)
+#DOC:       - 172.16.0.0 - 172.31.255.255 (172.16/12 prefix)
+#DOC:       - 192.168.0.0 - 192.168.255.255 (192.168/16 prefix)
+#DOC:   EXAMPLES
+#DOC:     isValidPrivateIP 192.168.1.1
+#DOC: 
+isValidPrivateIP() {
+  local retval=1
+  local o1
+  local o2
+  local ip=$1
+  if $(isValidIP $ip)
+  then
+    o1=$(echo $ip|cut -d'.' -f1)
+    o2=$(echo $ip|cut -d'.' -f2)
+    if [ $o1 -eq 10 ]
+    then
+      retval=0
+    fi
+    if [ $o1 -eq 192 -a $o2 -eq 168 ]
+    then
+      retval=0
+    fi
+    if [ $o1 -eq 172 ]
+    then
+      if [ $o1 -gt 15 -a $o2 -lt 32 ]
+      then
+        retval=0
+      fi
+    fi
+  fi
+  return $retval
+}
+
+#DOC: isValidCIDR CIDR
+#DOC:   NAME
+#DOC:     isValidCIDR - checks if the given CIDR notation is valid
+#DOC:   SYNOPSIS
+#DOC:     isValidCIDR CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the CIDR notation is valid, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     isValidCIDR 192.168.1.0/24
+#DOC: 
+isValidCIDR() {
+  local retval=1
+  local ip
+  local mask
+  local CIDR=$1
+  if $(echo "$CIDR" | grep -q -E "^([0-9]+\.){3}[0-9]+\/[0-9]+$")
+  then
+    ip=$(echo $CIDR|cut -d'/' -f1)
+    if $(isValidIP $ip)
+    then
+      mask=$(echo $CIDR | cut -d'/' -f2 )
+      if [ $mask -gt 0 -a $mask -lt 33 ]
+      then
+        retval=0
+      fi
+    fi
+  fi
+  return $retval
+}
+
+#DOC: dec2hex DECIMAL
+#DOC:   NAME
+#DOC:     dec2hex - converts a decimal number to hexadecimal
+#DOC:   SYNOPSIS
+#DOC:     dec2hex decimal
+#DOC:   DESCRIPTION
+#DOC:     Accepts a decimal number as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     dec2hex 255
+#DOC: 
+dec2hex() {
+    if ! echo "$1" | grep -qE '^[0-9]+$'
+    then
+        echo "Error: argument must be a decimal number" >&2
+        return 1
+    fi
+    printf "%X\n" "$1"
+    return 0
+}
+
+#DOC: dec2bin DECIMAL
+#DOC:   NAME
+#DOC:     dec2bin - converts a decimal number to binary
+#DOC:   SYNOPSIS
+#DOC:     dec2bin DECIMAL
+#DOC:   DESCRIPTION
+#DOC:     Accepts a decimal number as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     dec2bin 255
+#DOC: 
+dec2bin() {
+    if ! expr "$1" : '^[0-9]\+$' >/dev/null; then
+        echo "Error: argument must be a decimal number" >&2
+        return 1
+    fi
+    decimal=$1
+    binary=""
+    while [ $decimal -gt 0 ]; do
+        remainder=$(expr $decimal % 2)
+        binary="${remainder}${binary}"
+        decimal=$(expr $decimal / 2)
+    done
+    echo $binary
+    return 0
+}
+
+#DOC: bin2dec BINARY
+#DOC:   NAME
+#DOC:     bin2dec - converts a binary number to decimal
+#DOC:   SYNOPSIS
+#DOC:     bin2dec BINARY
+#DOC:   DESCRIPTION
+#DOC:     Accepts a binary number as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     bin2dec 11111111
+#DOC: 
+bin2dec() {
+    if ! expr "$1" : '^[01]\+$' >/dev/null; then
+        echo "Error: argument must be a binary number" >&2
+        return 1
+    fi
+    local binary=$1
+    local decimal=0
+    local power=0
+    while [ -n "$binary" ]; do
+        local digit=${binary#*${binary%?}}
+        decimal=$(expr $decimal + $digit \* 2 \^ $power)
+        power=$(expr $power + 1)
+        binary=${binary%?}
+    done
+    echo $decimal
+    return 0
+}
+
+#DOC: ip2bin IP
+#DOC:   NAME
+#DOC:     ip2bin - converts an IP address to binary
+#DOC:   SYNOPSIS
+#DOC:     ip2bin IP
+#DOC:   DESCRIPTION
+#DOC:     Accepts an IP address as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     ip2bin 192.168.1.1
+#DOC: 
+ip2bin() { 
+  local retval=0
+  local ipbin=''
+  local lz
+  local ib
+  local ip=$1
+  if $(isValidIP "$ip")
+  then
+    for o in $(echo $ip | sed 's/\./ /g');
+    do
+      ib=$(dec2bin $o)
+      if [ $(echo "$ib" | wc -c) -lt 9 ]
+      then
+        #use 9 instead of 8, because dec2bin returns also new line which is counted by wc -c
+        while [ $(echo $ib | wc -c) -lt 9 ]
+        do
+          ib="0$ib"
+        done
+      fi
+      ipbin=$(echo "$ipbin$ib")
+    done
+    echo $ipbin
+  else
+    retval=1
+  fi
+  return $retval
+}
+
+#DOC: bin2ip BINARY
+#DOC:   NAME
+#DOC:     bin2ip - converts a binary IP address to decimal
+#DOC:   SYNOPSIS
+#DOC:     bin2ip binary
+#DOC:   DESCRIPTION
+#DOC:     Accepts a binary IP address as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     bin2ip 11000000101010000000000100000001
+#DOC: 
+bin2ip() {
+  local retval=0
+  local o1
+  local o2
+  local o3
+  local o4
+  local binip=$1
+  if $(echo "$binip" | grep -q -E "^[0,1]{32}$")
+  then
+    o1=$(echo $binip | cut -c1-8)
+    o2=$(echo $binip | cut -c9-16)
+    o3=$(echo $binip | cut -c17-24)
+    o4=$(echo $binip | cut -c25-32)
+    echo "$(bin2dec $o1).$(bin2dec $o2).$(bin2dec $o3).$(bin2dec $o4)"
+  else
+    retval=1
+  fi
+  return $retval
+}
+
+#DOC: dec2ip DECIMAL
+#DOC:   NAME
+#DOC:     dec2ip - converts a decimal IP address to binary
+#DOC:   SYNOPSIS
+#DOC:     dec2ip DECIMAL
+#DOC:   DESCRIPTION
+#DOC:     Accepts a decimal IP address as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     dec2ip 3232235521
+#DOC: 
+dec2ip() {
+  local retval=1
+  local binip
+  local decip=$1
+  # Check if the decimal number is within the valid range for an IPv4 address (0 to 2^32-1)
+  if [ $decip -ge 0 ] && [ $decip -le 4294967295 ]
+  then
+    binip=$(dec2bin $decip)
+    while [ $(echo $binip | wc -c) -lt 33 ]
+    do
+      binip="0$binip"
+    done
+    bin2ip $binip
+    retval=0
+  else
+    echo "Error: argument must be a decimal number between 0 and 4294967295" >&2
+  fi
+  return $retval
+}
+
+#DOC: hex2ip HEX_STRING
+#DOC:   NAME
+#DOC:     hex2ip - converts a 4-byte hexadecimal string to an IP address
+#DOC:   SYNOPSIS
+#DOC:     hex2ip HEX_STRING
+#DOC:   DESCRIPTION
+#DOC:     Accepts a 4-byte hexadecimal string as a required argument and returns the corresponding IP address.
+#DOC:   EXAMPLES
+#DOC:     hex2ip 0a000081
+#DOC:     Output: 10.0.0.129
+hex2ip() {
+    hex=$1
+    ip=""
+    for i in 0 2 4 6; do
+        first_digit=$(echo $hex | cut -c $((i+1)))
+        second_digit=$(echo $hex | cut -c $((i+2)))
+        part=$(expr 16 \* $(expr index 0123456789abcdef $first_digit - 1) + $(expr index 0123456789abcdef $second_digit - 1))
+        ip="$ip$part."
+    done
+    echo ${ip%?}
+}
+
+#DOC: mask2CIDR MASK
+#DOC:   NAME
+#DOC:     mask2CIDR - converts a subnet mask to CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     mask2CIDR mask
+#DOC:   DESCRIPTION
+#DOC:     Accepts a subnet mask as a required argument and returns 0 if the conversion is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     mask2CIDR 255.255.255.0 returns 24
+#DOC: 
+mask2CIDR() {
+  local retval=1
+  local mask=$1
+  if $(isValidMask $mask)
+  then
+    retval=0
+    ip2bin $mask | sed 's/0//g' | wc -c
+  fi
+  return $retval
+}
+
+#DOC: networkIP CIDR
+#DOC:   NAME
+#DOC:     networkIP - calculates the network IP address from a CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     networkIP CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the calculation is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     networkIP 192.168.1.1/24 returns 192.168.1.0
+#DOC: 
+networkIP() {
+  local retval=1
+  local ip
+  local cidrsubnet
+  local binip
+  local binnet
+  local CIDR=$1
+  if $(isValidCIDR $CIDR)
+  then
+    retval=0
+    ip=$(echo $CIDR| cut -d'/' -f1)
+    cidrsubnet=$(echo $CIDR| cut -d'/' -f2)
+    binip=$(ip2bin $ip)
+    binnet=$(echo $binip|cut -c1-$cidrsubnet | rev)
+    while [ $(echo $binnet|wc -c) -lt 33 ]
+    do
+      binnet="0$binnet"
+    done
+    bin2ip $(echo $binnet | rev)
+  fi
+  return $retval
+}
+
+#DOC: broadcastIP CIDR
+#DOC:   NAME
+#DOC:     broadcastIP - calculates the broadcast IP address from a CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     broadcastIP CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the calculation is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     broadcastIP 192.168.1.1/24 returns 192.168.1.255
+#DOC: 
+broadcastIP() {
+  local retval=1
+  local broadcast
+  local binip
+  local ip
+  local cidrsubnet
+  local CIDR=$1
+  if $(isValidCIDR $CIDR)
+  then
+    retval=0
+    ip=$(echo $CIDR| cut -d'/' -f1)
+    cidrsubnet=$(echo $CIDR| cut -d'/' -f2)
+    binip=$(ip2bin $ip)
+    broadcast=$(echo $binip|cut -c1-$cidrsubnet | rev)
+    while [ $(echo $broadcast|wc -c) -lt 33 ]
+    do
+      broadcast="1$broadcast"
+    done
+    bin2ip $(echo $broadcast | rev) 
+  fi
+  return $retval
+}
+
+#DOC: firstHost CIDR
+#DOC:   NAME
+#DOC:     firstHost - calculates the first host IP address from a CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     firstHost CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the calculation is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     firstHost 192.168.1.1/24 returns 192.168.1.1
+#DOC: 
+firstHost() { 
+  local retval=1
+  local ip
+  local cidrsubnet
+  local firstip
+  local CIDR=$1
+  if $(isValidCIDR $CIDR)
+  then
+    retval=0
+    ip=$(echo $CIDR| cut -d'/' -f1)
+    cidrsubnet=$(echo $CIDR| cut -d'/' -f2)
+    binip=$(ip2bin $ip)
+    firstip=$(echo $binip|cut -c1-$cidrsubnet | rev)
+    while [ $(echo $firstip|wc -c) -lt 32 ]
+    do
+      firstip="0$firstip"
+    done
+    bin2ip $(echo "1$firstip" | rev)
+  fi
+  return $retval
+}
+
+#DOC: lastHost CIDR
+#DOC:   NAME
+#DOC:     lastHost - calculates the last host IP address from a CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     lastHost CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the calculation is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     lastHost 192.168.1.1/24 returns 192.168.1.254
+#DOC: 
+lastHost() {
+  local retval=1
+  local ip
+  local cidrsubnet
+  local lastip
+  local CIDR=$1
+  if $(isValidCIDR $CIDR)
+  then
+    retval=0
+    ip=$(echo $CIDR| cut -d'/' -f1)
+    cidrsubnet=$(echo $CIDR| cut -d'/' -f2)
+    binip=$(ip2bin $ip)
+    lastip=$(echo $binip|cut -c1-$cidrsubnet | rev)
+    while [ $(echo $lastip|wc -c) -lt 32 ]
+    do
+      lastip="1$lastip"
+    done
+    bin2ip $(echo 0$lastip | rev)
+  fi
+  return $retval
+}
+
+#DOC: generateAllHosts CIDR
+#DOC:   NAME
+#DOC:     generateAllHosts - generates all host IP addresses from a CIDR notation
+#DOC:   SYNOPSIS
+#DOC:     generateAllHosts CIDR
+#DOC:   DESCRIPTION
+#DOC:     Accepts a CIDR notation as a required argument and returns 0 if the generation is successful, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     generateAllHosts 192.168.1.1/30 returns 192.168.1.1 192.168.1.2
+#DOC: 
+generateAllHosts() {
+  local retval=1
+  local firstipdec
+  local lastipdec
+  local currentipdec
+  local CIDR=$1
+  if $(isValidCIDR $CIDR)
+  then
+    firstipdec=$(bin2dec $(ip2bin $(firstHost $CIDR)))
+    lastipdec=$(bin2dec $(ip2bin $(lastHost $CIDR)))
+    currentipdec=$firstipdec
+    while [ $currentipdec -lt $lastipdec ]
+    do
+      dec2ip $currentipdec
+      currentipdec=$(expr $currentipdec + 1)
+    done
+    dec2ip $currentipdec
+    retval=0
+  fi  
+  return $retval
+}
+
+#DOC: isIPInRange IP RANGE
+#DOC:   NAME
+#DOC:     isIPInRange - checks if an IP address is within a given range
+#DOC:   SYNOPSIS
+#DOC:     isIPInRange ip range
+#DOC:   DESCRIPTION
+#DOC:     Accepts an IP address and a range as required arguments. The range can be in CIDR notation or as a pair of IP addresses separated by a hyphen. Returns 0 if the IP address is within the given range, 1 otherwise.
+#DOC:   EXAMPLES
+#DOC:     isIPInRange 192.168.1.1 192.168.1.0/24 returns 0
+#DOC:     isIPInRange 192.168.1.1 192.168.1.0-192.168.1.255 returns 0
+#DOC: 
+isIPInRange() {
+  local retval=1
+  local ip=$1
+  local range=$2
+  local firstipdec
+  local lastipdec
+  local currentipdec
+
+  if $(isValidIP $ip)
+  then
+    if $(isValidCIDR $range)
+    then
+      firstipdec=$(bin2dec $(ip2bin $(firstHost $range)))
+      lastipdec=$(bin2dec $(ip2bin $(lastHost $range)))
+    elif echo $range | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
+    then
+      firstipdec=$(bin2dec $(ip2bin $(echo $range | cut -d'-' -f1)))
+      lastipdec=$(bin2dec $(ip2bin $(echo $range | cut -d'-' -f2)))
+    fi
+
+    if [ ! -z $firstipdec ] && [ ! -z $lastipdec ]
+    then
+      currentipdec=$(bin2dec $(ip2bin $ip))
+      if [ $currentipdec -ge $firstipdec ] && [ $currentipdec -le $lastipdec ]
+      then
+        retval=0
+      fi
+    fi
+  fi
+
+  return $retval
+}
+
+
+#Version history at the end of the file:
+#VERSION HISTORY:
+#Version,Comment
+#20210909,CHANGED: make all variables in the functions local
+#20230420,ADDED: Addition DOC Comments to support help system
+#20230421,ADDED: Addition DOC Comments to support help system; REMOVED: dependency on bc
+#20230423,ADDED: Addition DOC Comments to support help system; ADDED: new function isIPInRange 
+#20230603,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230605,UPDATED: function definitions removed space between functionName and () to support the help system
+#20230622,ADDED: getLibipVersion
+#20240929,ADDED: hex2ip

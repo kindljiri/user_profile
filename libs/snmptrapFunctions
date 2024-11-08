@@ -1,0 +1,388 @@
+#! /bin/sh
+
+#This Library below contains its own documentation just do:
+#grep "#DOC: " snmptrapFunctions | sed 's/[ \t]*#DOC://'
+
+#Variables:
+snmptrapFuncAuthor='Jiri Kindl'
+snmptrapFuncVersion='20230906'
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: snmptrapFunctions
+#DOC: DESCRIPTION: Library of functions to work with snmptrapd.log and generate face traps or replay traps from log.
+#DOC: 
+
+#DOC: getSnmptrapFunctionsVersion 
+#DOC:   NAME 
+#DOC:     getSnmptrapFunctionsVersion - Print snmptrapFunctions version 
+#DOC:   SYNOPSIS 
+#DOC:     getSnmptrapFunctionsVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print snmptrapFunctions version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getSnmptrapFunctionsVersion() {
+  echo $snmptrapFuncVersion
+  return 0
+}
+
+#DOC: getSNMPTrapIPs [filename]
+#DOC:   NAME
+#DOC:        getSNMPTrapIPs - return a list of unique SNMP trap IPs from the input
+#DOC:   SYNOPSIS
+#DOC:        getSNMPTrapIPs [filename]
+#DOC:   DESCRIPTION
+#DOC:        getSNMPTrapIPs accepts a filename as an argument or reads from stdin if no filename is provided. It returns a list of unique SNMP trap IPs from the input.
+#DOC:   EXAMPLE
+#DOC:        getSNMPTrapIPs filename.txt
+#DOC:        cat filename.txt | getSNMPTrapIPs
+#DOC: 
+getSNMPTrapIPs() {
+    if [ -z "$1" ]; then
+        grep -o 'UDP: \[.*\]:162' | cut -d':' -f2 | grep -o -E '([0-9]+\.){3}[0-9]+' | sort | uniq
+    else
+        grep -o 'UDP: \[.*\]:162' "$1" | cut -d':' -f2 | grep -o -E '([0-9]+\.){3}[0-9]+' | sort | uniq
+    fi
+}
+
+
+#DOC: getSNMPTrapIPsWithCommunity [filename]
+#DOC:   NAME
+#DOC:        getSNMPTrapIPsWithCommunity - return a list of unique SNMP trap IPs and their communities from the input
+#DOC:   SYNOPSIS
+#DOC:        getSNMPTrapIPsWithCommunity [filename]
+#DOC:   DESCRIPTION
+#DOC:        getSNMPTrapIPsWithCommunity accepts a filename as an argument or reads from stdin if no filename is provided. It returns a list of unique SNMP trap IPs and their communities from the input.
+#DOC: 
+#DOC:   EXAMPLE
+#DOC:        getSNMPTrapIPsWithCommunity filename.txt
+#DOC:        cat filename.txt | getSNMPTrapIPsWithCommunity
+#DOC: 
+getSNMPTrapIPsWithCommunity() {
+    if [ -z "$1" ]; then
+        input=$(cat)
+    else
+        input=$(cat "$1")
+    fi
+    echo "$input" | grep community | sed 's/.*UDP: \[\([^:]*\).*\]:162.*, community \([^$]*\)$/\1,\2/' | sort | uniq | sed 's/\]//g'
+}
+
+#DOC: getSNMPTrapNames [filename]
+#DOC:   NAME
+#DOC:     getSNMPTrapNames - return a list of unique SNMP trap names
+#DOC:   SYNOPSIS
+#DOC:     getSNMPTrapNames [filename]
+#DOC:   DESCRIPTION
+#DOC:     This function returns a list of unique SNMP trap names from the input. It accepts a filename as an argument or reads from stdin if no filename is provided.
+#DOC:     The function uses the following pattern to extract trap names:
+#DOC:     'SNMPv2-MIB::snmpTrapOID.0 = OID: [A-Za-z0-9\-]+::[A-Za-z0-9\_\-\.]+|Enterprise Specific Trap \([A-Za-z0-9\-]+::[A-Za-z0-9\_\-\.]+\)'.
+#DOC:   EXAMPLES
+#DOC:     getSNMPTrapNames filename.txt
+#DOC:     cat filename.txt | getSNMPTrapNames#DOC: 
+#DOC: 
+getSNMPTrapNames() {
+    if [ -z "$1" ]; then
+        input=$(cat)
+    else
+        input=$(cat "$1")
+    fi
+    echo "$input" | grep -o -E 'SNMPv2-MIB::snmpTrapOID.0 = OID: [A-Za-z0-9\-]+::[A-Za-z0-9\_\-\.]+|Enterprise Specific Trap \([A-Za-z0-9\-]+::[A-Za-z0-9\_\-\.]+\)' | sed 's/SNMPv2-MIB::snmpTrapOID.0 = OID: //' |sed 's/Enterprise Specific Trap (//' |sed 's/)//'| sort | uniq
+}
+
+#DOC: getTrapID fullName
+#DOC:   NAME
+#DOC:     getTrapID - provide the trap full name
+#DOC:   SYNOPSIS
+#DOC:     getTrapID fullName
+#DOC:   DESCRIPTION
+#DOC:     This function provides the trap full name, for example ORACLE-ENTERPRISE-MANAGER-4-MIB::oraEMNGEvent.
+#DOC:   RETURN VALUES
+#DOC:     1 - No argument entered
+#DOC:     2 - Not able to translate
+#DOC: 
+getSNMPTrapID() {
+  local TrapID="UNKNOWN"
+  local retval=0
+  local fullName=$1
+
+  if [ -z "$fullName" ]
+  then
+    echo "No argument provided: provide the trap full name, for example ORACLE-ENTERPRISE-MANAGER-4-MIB::oraEMNGEvent"
+    return 1
+  fi
+
+  TrapID=$(snmptranslate -On $fullName 2> /dev/null | rev | cut -d. -f1 | rev)
+  if [ -z $TrapID ]
+  then
+    TrapID="UNKNOWN"
+    retval=2
+  fi
+  echo $TrapID
+  return $retval
+}
+
+#DOC: getTrapEnterpriseID fullName
+#DOC:   NAME
+#DOC:     getTrapEnterpriseID - provide the trap full name
+#DOC:   SYNOPSIS
+#DOC:     getTrapEnterpriseID fullName
+#DOC:   DESCRIPTION
+#DOC:     This function provides the trap full name, for example ORACLE-ENTERPRISE-MANAGER-4-MIB::oraEMNGEvent.
+#DOC:   RETURN VALUES
+#DOC:     1 - No argument entered
+#DOC:     2 - Not able to translate
+#DOC: 
+getSNMPTrapEnterpriseID() {
+  local TrapEnterpriseID="UNKNOWN"
+  local retval=0
+  local fullName=$1
+
+  if [ -z "$fullName" ]
+  then
+    echo "No argument provided: provide the trap full name, for example ORACLE-ENTERPRISE-MANAGER-4-MIB::oraEMNGEvent"
+    return 1
+  fi
+
+  TrapEnterpriseID=$(snmptranslate -On $fullName 2> /dev/null | rev | cut -d. -f2- | rev)
+  if [ -z $TrapEnterpriseID ]
+  then
+    TrapEnterpriseID="UNKNOWN"
+    retval=2
+  fi
+  echo $TrapEnterpriseID 
+  return $retval
+}
+
+#DOC: splitLog2IndividualTraps
+#DOC:   NAME
+#DOC:     splitLog2IndividualTraps - split the log file with traps to individual traps
+#DOC:   SYNOPSIS
+#DOC:     splitLog2IndividualTraps
+#DOC:   DESCRIPTION
+#DOC:     This function splits the log file with traps to individual traps, one trap per file, based on timestamp at line beginning. 
+#DOC:     Files are temporarily saved in /tmp and they all start with "trap". 
+#DOC:     The file numbering is not consistent because files not containing traps are removed.
+#DOC: 
+splitLog2IndividualTraps() {
+  local tmp_trap_folder=$(mktemp -d -t traps.XXX)
+  local tmp_trap_file
+  local is_trap=0 #No it's not
+  csplit -f $tmp_trap_folder/trap -s $1 '/^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9] /' {*}
+  #!!! use grep trap instead of ls /tmp/trap*, because ls trap* is returning error: too many arguments
+  for tmp_trap_file in $(ls $tmp_trap_folder | grep "trap")  
+  do
+    if [ $(grep "Enterprise Specific Trap" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
+    then
+      is_trap=1 # yes SMIv1 format
+    fi
+    if [ $(grep "SNMPv2-MIB::snmpTrapOID" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
+    then
+      is_trap=1 # yes SMIv2 format
+    fi
+    if [ $is_trap -eq 0 ]
+    then
+      rm -f $tmp_trap_folder/$tmp_trap_file
+    fi
+  done
+  echo "$tmp_trap_folder"
+}
+
+
+#DOC: log2snmptrap
+#DOC:   NAME
+#DOC:     log2snmptrap - convert the file containing one trap into snmptrap command
+#DOC:   SYNOPSIS
+#DOC:     log2snmptrap
+#DOC:   DESCRIPTION
+#DOC:     This function converts the file containing one trap into an snmptrap command using temporary files generated by splitLog2IndividualTraps.
+#DOC: 
+log2snmptrap() {
+  local tmptrapfile=$1
+  #create temporary files
+  local tmpfile1=$(mktemp)
+  local tmpfile2=$(mktemp)
+  local regex='[0-9]{1,}(\.[0-9]{1,})* = |[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*::[a-zA-Z0-9]+(\.[0-9]+)* = '
+
+  trap_name=$(cat $tmptrapfile | getSNMPTrapNames)
+  trap_id=$(getSNMPTrapID $trap_name)
+  #if cannot translate trap name to it's ID then fallback to name
+  if [ $trap_id = "UNKNOWN" ]
+  then
+    trap_id=$trap_name
+  fi
+
+  echo "DEBUG trap name and id"
+  echo "$trap_name"
+  echo "$trap_id"
+  echo "DEBUG END"
+ 
+  #PARSE THE LOG
+
+  # Convert Windows-style line endings to Unix-style line endings,
+  #remove the header line (IPs)
+  #[10.155.20.62]:51063->[10.155.101.209]:162
+  sed 's/\r$//' "$tmptrapfile" | grep -v -E '\[[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\]:[0-9]+->[[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\]:[0-9]+'  > "$tmpfile1" 
+  
+  # removes white spaces at begining and end of the line 
+  # to get rid of multiple spaces in multiline strings like longer Hex-STRINGs
+  sed 's/^[ \t]*//' $tmpfile1 |sed 's/[ \t]*$//' > "$tmpfile2"
+
+  # replace newlines and tabs with spaces,
+  # and split the input into separate lines based on the provided regular expression, and do trim spaces which might been added extra by tr
+  cat $tmpfile2 | tr '\n\t' '  ' | sed -E "s/($regex)/\n\1/g" | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' > "$tmpfile1"
+
+  #DEBUG BEGIN
+  echo "DEBUG: cat $tmpfile1 before substituting TYPES"
+  cat $tmpfile1
+  echo ""
+  echo "DEBUG END"
+  echo ""
+  #DEBUG END
+
+  #  sed 's/ = Wrong Type (should be \([^)]*\)):/ = \1:/g'  => sometimes the vendor have type in MIB then sending in reality picking the typ it shall be accoring the MIB (otherwise not be able to send)
+  # example: HP-NNMI-NBI-MIB::nnmiIncidentOtherNodeMgmtAddr = Wrong Type (should be OCTET STRING): NULL
+  # CISCO-EPM-NOTIFICATION-MIB::cenAlarmTriageValue = Wrong Type (should be INTEGER): Gauge32: 0 
+  # after sed we might get something like this:
+  # CISCO-EPM-NOTIFICATION-MIB::cenAlarmTriageValue = INTEGER: Gauge32: 0 
+  sed -i 's/ = Wrong Type (should be \([^)]*\)):/ = \1:/g' $tmpfile1
+  
+  #HANDLE STRINGS
+  # Replace "OCTET STRING" with "STRING"
+  sed -i 's/ = OCTET STRING:/ = STRING:/g' "$tmpfile1"
+  # Replace "STRING" with "s" and enclose the string in double quotes
+  sed -i 's/ = STRING: \(.*\)$/ s \"\1\"/' "$tmpfile1"
+  # Replace "Hex-STRING" with "x" and enclose the string in double quotes
+  sed -i 's/ = Hex-STRING: \(.*\)$/ x \"\1\"/' "$tmpfile1"
+  # Remove any double double quotes
+  sed -i 's/ s \"\"/ s \"/' "$tmpfile1"
+  sed -i 's/\"\"$/\"/' "$tmpfile1"
+
+  #HANDLE NUMBERS
+  # Replace "Gauge32" with "i"
+  sed -i 's/ = Gauge32:/ i/g' "$tmpfile1"
+  # Replace "Counter64" with "i"
+  sed -i 's/ = Counter64:/ i/g' "$tmpfile1"
+  # Replace "INTEGER" followed by a number with "i" followed by the same number
+  sed -i 's/ = INTEGER: \([0-9]\+\)/ i \1/g' "$tmpfile1"
+  # Replace "INTEGER" followed by a non-number with "i" followed by zero
+  sed -i 's/ = INTEGER: [^0-9]\+/ i 0/g' "$tmpfile1"
+  # Replace "INTEGER" at the end of a line with "i"
+  sed -i 's/ = INTEGER: \([0-9]\+\)$/ i \1/' "$tmpfile1"
+  # Replace "Timeticks" with "i"
+  sed -i 's/ = Timeticks: (\([0-9]\+\)).*/ i \1/g' "$tmpfile1"
+
+  #HANDLE OID
+  # Replace "OID" with "o"
+  sed -i 's/ = OID:/ o/g' "$tmpfile1"
+
+  #DEBUG BEGIN
+  echo "DEBUG: cat $tmpfile1 after substituting TYPES"
+  cat $tmpfile1
+  echo ""
+  echo "DEBUG END"
+  echo ""
+  #DEBUG END
+
+  #Uptime for SMIv1 needs to be handled before till the lines are separeted
+  #replace uptime with "0" it's dummy but fine for this purpose
+  sed -i 's/) Uptime: .*$/) Uptime: "0"/' "$tmpfile1"
+
+  #remove new line because the command need to be one line:
+  cat $tmpfile1 | tr '\n' ' '> $tmpfile2
+
+  # CONVERT TRAP/NOTIFICATION INFORMATION TO SNMPTRAP COMMAND
+  # Extract the trap name and add the `snmptrap` command for SMIv2 and also set uptime
+  sed -i 's/DISMAN-EVENT-MIB::sysUpTimeInstance i \([0-9]\+\) SNMPv2-MIB::snmpTrapOID.0 o /snmptrap -v 2c -c public TrapRecieverIP \1 /g' "$tmpfile2"
+  
+  # Extract the trap name and add the `snmptrap` command for SMIv1
+  sed -i 's/\([^ ]*\) Enterprise Specific Trap (\([^)]*\)) /snmptrap -v 1 -c public TrapRecieverIP \1 localhost 6 \2 /' "$tmpfile2"
+  #try to translate the trapname to ID for SMIv1 traps
+  cat $tmpfile2 | sed "s/localhost 6 $trap_name Uptime: /localhost 6 $trap_id /" > $tmpfile1
+ 
+
+  #but need to have new line at the end ;-)
+  echo "" >> $tmpfile1
+  
+  cat $tmpfile1
+
+  #clean the temporary files
+  rm -f $tmpfile1
+  rm -f $tmpfile2
+}
+
+#DOC: listSNMPVariables
+#DOC:   NAME
+#DOC:     listSNMPVariables - lists SNMP variables from an SNMP trap log file
+#DOC:   SYNOPSIS
+#DOC:     listSNMPVariables SNMP_TRAP_LOG_FILE
+#DOC:   DESCRIPTION
+#DOC:     This function extracts SNMP variables from an SNMP trap log file, sorts them, and removes duplicates. It takes one argument, which is the path to the SNMP trap log file.
+#DOC:   ERROR CODES
+#DOC:     2 - snmptrapdlog file not found
+#DOC:     3 - snmptrapdlog file not readable
+#DOC: 
+listSNMPVariables() {
+  # Check if the snmptrapdlog file exists
+  local snmptrapdlog=$1
+  if [[ ! -e $snmptrapdlog ]]; then
+    echo "Error: $snmptrapdlog file not found" >&2
+    echo "Usage: listSNMPVariables SNMP_TRAP_LOG_FILE" >&2
+    return 2
+  fi
+
+  # Check if the snmptrapdlog file is readable
+  if [[ ! -r $snmptrapdlog ]]; then
+    echo "Error: $snmptrapdlog file not readable" >&2
+    echo "Usage: listSNMPVariables SNMP_TRAP_LOG_FILE" >&2
+    return 3
+  fi
+
+  # Extract SNMP variables from the log file, sort them, and remove duplicates
+  grep -o -E "[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*::[a-zA-Z0-9]+(\.[0-9]+)* =" $snmptrapdlog |sed 's/ =//'g | sort | uniq
+}
+
+#DOC: USAGE TIPS:
+#DOC: 
+#DOC:   USE CASE 1
+#DOC:     Having traps in file (in same format as snmptrapd.log) and want to reply them, (appted them in /var/log/snmptrapd.log with cureent timesatmp)
+#DOC:     # Split the big log file to individual traps it will return the folder in /tmp where there are files, one file per trap
+#DOC:     splitLog2IndividualTraps snmptrapd-netIM-Translated.log
+#DOC:     # Switch to that folder
+#DOC:     cd /tmp/traps.aMM
+#DOC:     # Now we will convert them to small scripts which append the trap to snmptrapd.log with current timestamp
+#DOC:     #   Replace the Timestamp with command to generate current timestamp in same format
+#DOC:     for trap in $(ls); do sed -i "s/[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]/\$(date +'%Y-%m-%d %H:%M:%S')/" $trap; done
+#DOC:     #   Add cat command to append to snmptrapd.log
+#DOC:     for trap in $(ls); do sed -i '1 i cat >> /var/log/snmptrapd.log<< EOF' $trap; done
+#DOC:     #   Append EOF
+#DOC:     for trap in $(ls); do echo 'EOF' >> $trap; done
+#DOC:     #   Replace tabs with 4 spaces (from some reasons traps are doing problems where injecting)
+#DOC:     for trap in $(ls); do sed -i 's/\t/    /g' $trap; done
+#DOC:     # Run all those small script. 
+#DOC:     # !! this ussually must be done by root as only root can write to /var/log/snmptrapd.log
+#DOC:     for trap in $(ls); do sh $trap; done
+
+
+#VERSION HISTORY:
+#Version,Comment
+#20220304,CORRECTED: " i NULL " problem it's now replaces by " i 0 " it still might genrate some errors in case the integer for taht varaible have limited range not including 0
+#20220306,CORRECTED: log2trap wrong tab to space replacement 
+#20220309,CORRECTED: log2trap added windows EOL removal
+#20220311,ADDED: getTrapNames
+#20220312,CORRECTED: log2trap added Gauge replacement
+#20220702,CORRECTED: log2trap corrected INTEGER replacement at line end
+#20220922,ADDED: new functions getTrapID, getTrapEnterpriseID, splitLog2IndividualTraps
+#20220923,CORRECTED: bug in getTrapID, getTrapEnterpriseID, they wasn't returning output.
+#20220929,ADDED: log2snmptrap function to replace the log2trap alias in future
+#20221021,ADDED: listMIB-Modules function to list MIB MODULE and find possible duplicites
+#20220320,CHANGED: functions naming convetions to use word SNMP to make clear the purpose
+#20230416,ADDED: getTrapID, getTrapEnterpriseID argument handeling and error message
+#20230420,ADDED: Addition DOC Comments to support help system
+#20230421,CHANGED: converted getSNMPTrapNames alias to function
+#20230422,CHANGED: converted getSNMPTrapIPs alias to function, converted getSNMPTrapIPsWithCommunity alias to function
+#20230424,CHANGED: log2snmptrap better parsing
+#20230424,CHANGED: log2snmptrap added OID cnvertion and Hex-STRING Convertion
+#20230427,REMOVED: finction listSNMPMIBModules moved to snmpMIBFunctions library
+#20230530,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230622,ADDED: getSnmptrapFunctionsVersion - Print snmptrapFunctions version 
+#20230815,ADDED: listSNMPVariables - lists SNMP variables from an SNMP trap log file
+#20230906,ADDED: USAGE TIPS, USE CASE 1 in DOC comments

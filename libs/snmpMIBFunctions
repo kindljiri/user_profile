@@ -1,0 +1,317 @@
+#! /bin/sh
+
+#This Library below contains its own documentation just do:
+#grep "#DOC: " snmpMIBFunctions | sed 's/[ \t]*#DOC://'
+
+#Variables:
+snmpMIBFuncAuthor='Jiri Kindl'
+snmpMIBFuncVersion='20240509'
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: snmpMIBFunctions
+#DOC: DESCRIPTION: Library of functions to work with snmp MIB files.
+#DOC: 
+
+#DOC: getSnmpMIBFunctionsVersion 
+#DOC:   NAME 
+#DOC:     getSnmpMIBFunctionsVersion - Print snmpMIBFunctions version 
+#DOC:   SYNOPSIS 
+#DOC:     getSnmpMIBFunctionsVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print snmpMIBFunctions version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getSnmpMIBFunctionsVersion() {
+  echo $snmpMIBFuncVersion
+  return 0
+}
+
+#DOC: listSNMPMIBModules [OPTIONS] [DIRECTORY]
+#DOC:   NAME
+#DOC:        listSNMPMIBModules - list SNMP MIB files and their module names
+#DOC:   SYNOPSIS
+#DOC:        listSNMPMIBModules [OPTIONS] [DIRECTORY]
+#DOC:   DESCRIPTION
+#DOC:        listSNMPMIBModules searches the specified DIRECTORY (or /usr/share/snmp/mibs if no directory is specified) for SNMP MIB files and extracts their module names using the getSNMPMIBModuleName function. 
+#DOC:        The function prints the file name and module name for each file found, or an error message if the file is not a valid MIB file.
+#DOC: 
+#DOC:        The function supports the following options:
+#DOC: 
+#DOC:        -u    Print only unique module names, without file names.
+#DOC: 
+#DOC:        -d    Print only duplicate module names and their files.
+#DOC: 
+#DOC:        -n    Print only "Not a MIB file" lines.
+#DOC: 
+#DOC:        -h    Print a short help message.
+#DOC: 
+#DOC:   EXIT STATUS
+#DOC:        0 if the function completes successfully
+#DOC:        1 if an error occurs (e.g., invalid option or directory)
+#DOC: 
+listSNMPMIBModules() {
+    local dir="/usr/share/snmp/mibs"
+    local unique=false
+    local duplicates=false
+    local notmib=false
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -u) unique=true; shift ;;
+            -d) duplicates=true; shift ;;
+            -n) notmib=true; shift ;;
+            -h) cat <<- EOF
+Usage: listSNMPMIBModules [OPTIONS] [DIRECTORY]
+Options:
+  -u    Print only unique module names, without file names.
+  -d    Print only duplicate module names and their files.
+  -n    Print only 'Not a MIB file' lines.
+  -h    Print this help message.
+EOF
+return 0 ;;
+            --) shift; break ;;
+            *) dir="$1"; shift ;;
+        esac
+    done
+    if [[ ! -d "$dir" ]]; then
+        echo "Error: $dir is not a directory. Use -h for help." >&2
+        return 1
+    fi
+
+    local tmpfile=$(mktemp)
+    for file in $(find "$dir" -type f); do
+            local module_name
+            module_name=$(getSNMPMIBModuleName "$file" 2> /dev/null)
+            if [ -z "$module_name" ]; then
+                echo "Not a MIB file:$file" >> "$tmpfile"
+            else
+                echo "$module_name:$file" >> "$tmpfile"
+            fi
+    done
+
+    if [[ "$unique" = true ]]; then
+        grep -v '^Not a MIB file:' "$tmpfile" | cut -d':' -f1 | sed 's/^ *//' | sort | uniq
+    elif [[ "$duplicates" = true ]]; then
+        local dm
+        for dm in $(grep -v '^Not a MIB file:' "$tmpfile" | cut -d':' -f1 | sort | uniq -d)
+        do
+          grep "^$dm:" $tmpfile
+        done 
+    elif [[ "$notmib" = true ]]; then
+        grep '^Not a MIB file:' "$tmpfile"
+    else
+        cat "$tmpfile"
+    fi
+    rm -f "$tmpfile"
+}
+
+#DOC: getSNMPMIBModuleName FILE
+#DOC:   NAME
+#DOC:        getSNMPMIBModuleName - extract the module name from an SNMP MIB file
+#DOC:   SYNOPSIS
+#DOC:        getSNMPMIBModuleName FILE
+#DOC:   DESCRIPTION
+#DOC:        getSNMPMIBModuleName reads the content of the FILE given as an argument and extracts the module name from it. The function checks if the file exists, is readable, and is not empty. If any of these conditions are not met, it returns an error message and exits with an error code. If the file passes these checks, the function reads the file and tries to extract the module name from it.
+#DOC:   EXIT STATUS
+#DOC:        0 if the module name is successfully extracted and printed
+#DOC:        1 if no parameter is entered
+#DOC:        2 if the file doesn't exist
+#DOC:        3 if the file is not readable
+#DOC:        4 if the file is not a MIB file
+#DOC:        5 if the file is containing more modules
+#DOC:        6 if couldn't identify MIB module, but seem to be MIB
+#DOC: 
+getSNMPMIBModuleName() {
+    local file="$1"
+    local module_name=""
+    local state="INITIAL"
+    local token
+
+    if [ -z "$file" ]; then
+        echo "Error: No parameter entered" >&2
+        echo "Usage: getSNMPMIBModuleName FILE" >&2
+        return 1
+    elif [ ! -f "$file" ]; then
+        echo "Error: File: $file doesn't exist" >&2
+        echo "Usage: getSNMPMIBModuleName FILE" >&2
+        return 2
+    elif [ ! -r "$file" ]; then
+        echo "Error: Cannot read file: $file" >&2
+        echo "Usage: getSNMPMIBModuleName FILE" >&2
+        return 3
+    fi
+    
+    #check if file is MIB
+    if [ $(cat $file | tr -cd '\041-\176' | grep -iEo "DEFINITIONS::=BEGIN" |wc -l) -eq 1 ]
+    then
+      local lastLine
+      #1st attempt to find defintion 90% of MIB files will match and below for loop will be more effective
+      lastLine=$(cat $file | tr -cd '\041-\176,\012'| sed 's/[ \t]*::=[ \t]*/::=/g' | grep -iEn "DEFINITIONS::=BEGIN"|tail -n 1 | cut -d':' -f 1)
+      if [ -z $lastLine ]
+      then
+        #2nd attempt to find defintion and make below loop more effective
+        lastLine=$(cat $file | tr -cd '\040-\176,\012,\011' |tr '\011' '\040' | grep -iEn "^DEFINITIONS$| DEFINITIONS |^DEFINITIONS |DEFINITIONS$|DEFINITIONS::=|^BEGIN | BEGIN | BEGIN$|^BEGIN$|::=BEGIN" |tail -n 1 | cut -d':' -f 1)
+      fi
+    else
+      if [ $(cat $file | tr -cd '\041-\176' | grep -iEo "DEFINITIONS::=BEGIN" |wc -l) -eq 0 ]
+      then
+        echo "Error: File: $file Not a MIB" >&2
+        echo "Usage: getSNMPMIBModuleName FILE" >&2
+        return 4
+      else
+        echo "Error: File: $file Containe more MIB modules" >&2
+        return 5
+      fi
+    fi
+    
+    #If it's MIB file then use tr to remove non printable ASCII characters (in case it's uncode or so)
+    #Head just first few lines to optimize, and remove comments (optimization is mainly to make removeMIBComments to run faster)
+    #this one is added sed 's/::=/ ::=/g' because this is also valid 'DEFINITIONS::= BEGIN'
+    for token in $(cat "$file" |tr -cd '\040-\176,\012,\011' |tr '\011' '\040' | head -n $lastLine | removeMIBComments|sed '/^[ \t]*$/ d'|sed 's/[ \t]*::=[ \t]*/ ::= /g'); do
+        case $state in
+            INITIAL)
+                module_name=$token
+                state="MODULE_NAME"
+                ;;
+            MODULE_NAME)
+                if [ "$token" = "DEFINITIONS" ]; then
+                    state="DEFINITIONS"
+                else
+                    module_name=$token
+                fi
+                ;;
+            DEFINITIONS)
+                if [ "$token" = "::=" ]; then
+                    state="ASSIGNMENT"
+                else
+                    module_name=$token
+                    state="MODULE_NAME"
+                fi
+                ;;
+            ASSIGNMENT)
+                if [ "$token" = "BEGIN" ]; then
+                    echo "$module_name"
+                    return 0
+                else
+                    module_name=$token
+                    state="MODULE_NAME"
+                fi
+                ;;
+        esac
+    done
+    echo "Error: Parsing: $file couldn't identify MIB module, but seem to be MIB" >&2
+    return 6
+}
+
+#DOC: removeMIBComments [FILE]
+#DOC:   NAME
+#DOC:        removeMIBComments - removes comments from a MIB file
+#DOC:   SYNOPSIS
+#DOC:        removeMIBComments [FILE]
+#DOC:   DESCRIPTION
+#DOC:        removeMIBComments takes one optional argument, which is the path to the MIB file to be processed. If no argument is provided, the function reads from stdin. The function removes comments from the MIB file. It first checks if the provided file exists and is readable, and prints an error message if it's not. Then it processes the file line by line, removing comments and printing the result to stdout.
+#DOC:
+#DOC:        FILE: The path to the MIB file to be processed. Optional.
+#DOC:            Example:
+#DOC:              removeMIBComments /path/to/myfile.txt
+#DOC:              This will process /path/to/myfile.txt and print the result to stdout.
+#DOC:              cat /path/to/myfile.txt | removeMIBComments
+#DOC:              This will also process /path/to/myfile.txt and print the result to stdout.
+#DOC:   EXIT STATUS
+#DOC:        0 if the comments are successfully removed and printed
+#DOC:        1 if the file does not exist or is not readable
+#DOC: 
+removeMIBComments() {
+    # Argument processing
+    if [ $# -eq 0 ]; then
+        MIBFILE=$(mktemp)
+        cat /dev/stdin > $MIBFILE
+    else
+        MIBFILE=$1
+        if [ ! -e "$MIBFILE" ]; then
+            echo "ERROR: File $MIBFILE does not exist"
+            echo "Usage: removeMIBComments [filename]"
+            return 1
+        elif [ ! -r "$MIBFILE" ]; then
+            echo "ERROR: File $MIBFILE is not readable"
+            echo "Usage: removeMIBComments [filename]"
+            return 1
+        fi
+    fi
+
+    # Data sanitation
+    tmpfile=$(mktemp)
+    line_to_print=''
+    token_counter=0
+    in_text_counter=0
+    in_commnets_counter=0
+    line_counter=1
+
+    cat $MIBFILE |sed 's/\"/ \" /g' > $tmpfile
+    sed -i 's/--/ -- /g' $tmpfile
+
+    # Main processing
+    state='init'
+    while read LINE
+    do
+        for token in $(echo $LINE)
+        do
+            case $state in
+                init)       case $token in
+                                --) state='in_comment'
+                                ;;
+                                \") state='in_text'
+                                    in_text_counter=1
+                                    line_to_print="$line_to_print \""
+                                ;;
+                                *) line_to_print="$line_to_print $token"
+                                ;;
+                            esac
+                            ;;
+                in_comment) case $token in
+                                --) state='init'
+                                ;;
+                                \n) state='init'
+                                ;;
+                            esac
+                            ;;
+                in_text)    case $token in
+                                \") state='init'
+                                    in_text_counter=0
+                                    line_to_print="$line_to_print\""
+                                ;;
+                                *) if [ $in_text_counter -gt 1 ]
+                                   then
+                                     line_to_print="$line_to_print $token"
+                                   else
+                                     line_to_print="${line_to_print}${token}"
+                                   fi
+                                   in_text_counter=$(expr $in_text_counter + 1)
+                                ;;
+                            esac
+                            ;;
+            esac
+            token_counter=$(expr $token_counter + 1)
+        done
+        if [ "$state" = "in_comment" ]
+        then
+            state='init'
+        fi
+        echo $line_to_print
+        line_to_print=''
+        line_counter=$(expr $line_counter + 1)
+        token_counter=1
+    done < $tmpfile
+
+    rm -f $tmpfile
+
+    if [ $# -eq 0 ]; then rm -f $MIBFILE; fi 
+}
+
+#Version,Comment
+#20230427,INIT: starting with fucntions: listSNMPMIBModules, removeMIBComments
+#20230530,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230622,ADDED: getSnmpMIBFunctionsVersion - Print snmpMIBFunctions version
+#20230716,ADDED: recursivity in listSNMPMIBModules
+#20230722,CORRECTION: listSNMPMIBModules revoked, not showing correctly duplicates, now have better output for furhter processing
+#20230724,UPDATED: getSNMPMIBModuleName, speed optiomization, new return code for file not being MIB
+#20240507,CORRECTION: getSNMPMIBModuleName there was few modules was not recognized as MIBs, because different variations in DEFINITIONS ::= BEGIN (spaces, no spcess,tabs,etc.)
+#20240509,UPDATED: getSNMPMIBModuleName added error state for parsing problem

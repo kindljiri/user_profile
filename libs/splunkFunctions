@@ -1,0 +1,1873 @@
+#! /bin/sh
+
+#This Library below contains its own documentation just do:
+#grep "#DOC: " splunkFunctions | sed 's/[ \t]*#DOC://'
+
+#Variable definitions
+splunkFuncVERSION='20240606' 
+splunkFuncAUTORS='Jiri Kindl, j.kindl@accenture.com'
+#Version history at the end of the script
+
+#DOC: LIBRARY NAME: splunkFunctions
+#DOC: DESCRIPTION: The collection of functions which make splunk administration easier 
+#DOC: 
+output=plain
+
+#DOC: getSplunkFunctionsVersion 
+#DOC:   NAME 
+#DOC:     getSplunkFunctionsVersion - Print splunkFunctions version 
+#DOC:   SYNOPSIS 
+#DOC:     getSplunkFunctionsVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print splunkFunctions version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getSplunkFunctionsVersion() {
+  echo $splunkFuncVERSION
+  return 0
+}
+
+#######################
+#                     #
+#   CHECK FUNCTIONS   #
+#                     #
+#######################
+
+checkSPLUNK_HOME() {
+  #requires splunk home as argument
+  splunk_home=$1
+  
+  if [ -z "$SPLUNK_HOME" ]
+  then
+    echo 'WARNING: $SPLUNK_HOME not set'
+  else
+    echo "\$SPLUNK_HOME: $SPLUNK_HOME"
+    #Check is $SPLUNK_HOME = splunk_home
+    if [ ! "$SPLUNK_HOME"="$splunk_home" ]
+    then
+      echo 'WARNING: $SPLUNK_HOME not match directory where your splunk is installed'
+    fi
+  fi
+ 
+}
+
+#DOC: checkSplunkOwnership
+#DOC:   NAME
+#DOC:     checkSplunkOwnership - check if all files under $SPLUNK_HOME belong to the user running splunkd
+#DOC:   SYNOPSIS
+#DOC:     checkSplunkOwnership
+#DOC:   DESCRIPTION
+#DOC:     This function checks if all files under the $SPLUNK_HOME directory belong to the user running splunkd.
+#DOC:     If any files are found that do not belong to the user running splunkd, an error message is printed and a suggested correction is provided.
+#DOC: 
+checkSplunkOwnership() {
+  local user=$(id -nu)
+  local splunk_home=$(getSplunkHome)
+  if [ $(find $splunk_home ! -user $user | wc -l) -gt 0 ]
+  then
+    echo "ERROR: there are files in $1 which not belong to $2"
+    find $splunk_home ! -user $user
+    echo "Correction: chown -R $user:$user $splunk_home"
+  fi
+}
+
+#DOC: checkDatastoreOwnership
+#DOC:   NAME
+#DOC:     checkDatastoreOwnership - check if all files under the Splunk datastore belong to the user running splunkd
+#DOC:   SYNOPSIS
+#DOC:     checkDatastoreOwnership
+#DOC:   DESCRIPTION
+#DOC:     This function checks if all files under the Splunk datastore belong to the user running splunkd.
+#DOC:     If any files are found that do not belong to the user running splunkd, an error message is printed and a suggested correction is provided.
+#DOC: 
+checkDatastoreOwnership() {
+  local user=$(id -nu)
+  local datastore=$(getSplunkDatastore)
+  if [ $(find $datastore ! -user $user | wc -l) -gt 0 ]
+  then
+    echo "ERROR: there are files in $1 which not belong to $2"
+    find $datastore ! -user $user
+    echo "Correction: chown -R $user:$user $datastore"
+  fi
+}
+
+#DOC: checkCSVNonASCIIChars
+#DOC:   NAME
+#DOC:     checkCSVNonASCIIChars - print out all CSV files containing non-printable ASCII characters
+#DOC:   SYNOPSIS
+#DOC:     checkCSVNonASCIIChars
+#DOC:   DESCRIPTION
+#DOC:     This function prints out all CSV files that contain non-printable ASCII characters.
+#DOC:     Non-printable ASCII characters are characters in the ASCII character set that do not represent a visible symbol or character.
+#DOC:     These characters are typically used for control purposes, such as signaling the end of a line or the start of a new page.
+#DOC:     In this function, non-printable ASCII characters are defined as any character that is not a printable ASCII character (i.e., not in the range of 32-126), a newline (10), a tab (9), or a carriage return (13).
+#DOC:     Printable ASCII characters include alphanumeric characters (A-Z, a-z, 0-9) and common punctuation and symbols such as ! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | } ~.
+#DOC:     Non-printable ASCII characters in a CSV file can cause issues with lookups and should be removed to ensure correct functionality.
+#DOC:   SEE ALSO
+#DOC:     rmnpac, pnpac, csvFindNPAC
+#DOC: 
+checkCSVNonASCIIChars() { 
+  splunk_home=$(getSplunkHome)
+  for csv in $(find $splunk_home/etc/apps -maxdepth 3 -name \*.csv)
+  do 
+    numOfNonASCIIChars=$(cat $csv | tr -d '\040-\176,\012,\011,\015' | wc -c)
+    if [ $numOfNonASCIIChars -gt 0 ]
+    then
+	  echo "$csv,$numOfNonASCIIChars"
+    fi	
+  done
+}
+
+#DOC: csvFindNPAC
+#DOC:   NAME
+#DOC:     csvFindNPAC - Find non-printable ASCII characters in a CSV file
+#DOC:   SYNOPSIS
+#DOC:     csvFindNPAC FILE
+#DOC:   DESCRIPTION
+#DOC:     This function finds non-printable ASCII characters in a CSV file and prints their positions as line and character numbers, along with their hexadecimal values.
+#DOC:     Non-printable ASCII characters are characters in the ASCII character set that do not represent a visible symbol or character.
+#DOC:     These characters are typically used for control purposes, such as signaling the end of a line or the start of a new page.
+#DOC:     In this function, non-printable ASCII characters are defined as any character that is not a printable ASCII character (i.e., not in the range of 32-126), a newline (10), a tab (9), or a carriage return (13).
+#DOC:     Printable ASCII characters include alphanumeric characters (A-Z, a-z, 0-9) and common punctuation and symbols such as ! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | } ~.
+#DOC:     Non-printable ASCII characters in a CSV file can cause issues with lookups and should be removed to ensure correct functionality.
+#DOC:   SEE ALSO
+#DOC:     rmnpac, pnpac, checkCSVNonASCIIChars
+#DOC: 
+csvFindNPAC() {
+    LC_ALL=C
+    local file="$1"
+
+    if [ -z "$file" ]; then
+        echo "Usage: csvFindNPAC FILE" >&2
+        echo "Error: No file specified" >&2
+        return 1
+    fi
+
+    if [ ! -e "$file" ]; then
+        echo "Error: File '$file' does not exist" >&2
+        return 1
+    fi
+
+    if [ ! -r "$file" ]; then
+        echo "Error: File '$file' is not readable" >&2
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        line_num=$(expr $line_num + 1)
+        char_num=0
+        while IFS= read -r -n1 char; do
+            #hex_char=$(printf '%s' "$char" | od -A n -t x1 | tr -d ' ')
+            #echo "Processing character: $char ; Hex: $hex_char"
+            char_num=$(expr $char_num + 1)
+            if [ "$(printf '%s' "$char" | tr -d '\040-\176\012\011\015' | wc -c)" -gt 0 ]
+            then
+                hex_char=$(printf '%s' "$char" | od -A n -t x1 | tr -d ' ')
+                printf 'Line: %d, Character: %d, Hex: %s\n' "$line_num" "$char_num" "$hex_char"
+            fi
+        done <<EOF
+$line
+EOF
+    done <"$file"
+}
+
+#DOC: checkCSVEmptyLines
+#DOC:   NAME
+#DOC:     checkCSVEmptyLines - print out all CSV files containing empty lines
+#DOC:   SYNOPSIS
+#DOC:     checkCSVEmptyLines
+#DOC:   DESCRIPTION
+#DOC:     This function prints out all CSV files that contain empty lines.
+#DOC:     Empty lines in a CSV file can cause issues with lookups and should be removed to ensure correct functionality.
+#DOC: 
+checkCSVEmptyLines() { 
+  splunk_home=$(getSplunkHome)
+  for csv in $(find $splunk_home/etc/apps -name *.csv -type f)
+  do
+    #Number of lines without header
+    numOfLines=$(expr $(cat $csv |wc -l) - 1)
+    #Number of empty lines (or lines containint only white chars)
+    numOfEmptyLines=$(sed -n '/^[ \t]*$/ p' $csv | wc -l)
+    #if there are empty lines
+    if [ $numOfEmptyLines -gt 0 ]
+    then
+      #and number of lines is great then empty lines (there are some records lines which are not empty)
+      if [ $numOfLines -gt $numOfEmptyLines ] 
+      then
+	      echo "$csv,$numOfEmptyLines"
+      fi
+    fi	
+  done
+}
+
+#DOC: checkCSVMultiLinesFields
+#DOC:   NAME
+#DOC:     checkCSVMultiLinesFields - print out all CSV files containing multi-line fields
+#DOC:   SYNOPSIS
+#DOC:     checkCSVMultiLinesFields
+#DOC:   DESCRIPTION
+#DOC:     This function prints out all CSV files that contain multi-line fields.
+#DOC:     A multi-line field in a CSV file is a field that contains line breaks.
+#DOC:     Normally, each line in a CSV file represents a single record, with fields separated by a delimiter such as a comma.
+#DOC:     However, sometimes a field may contain line breaks, which means that the record spans multiple lines in the file.
+#DOC:     This can happen when a field contains text with paragraphs or other formatting that includes line breaks.
+#DOC:   EXAMPLES
+#DOC:     Here is an example of a CSV file that includes both normal (ID 1) and multi-line (ID 2) records:
+#DOC:         ID,First Name,Last Name,Address,Phone
+#DOC:         1,Jane,Doe,456 Elm St. Anytown, USA,555-1234
+#DOC:         2,John,Doe,"123 Main St.
+#DOC:         Anytown, USA",555-5678
+#DOC: 
+checkCSVMultiLinesFields() { 
+  local splunk_home=$(getSplunkHome)
+  local backupIFS=$IFS
+  IFS=$'\n'
+  for csv in $(find $splunk_home/etc/apps -name *.csv -type f)
+  do
+    #get all lines which contains qoutes
+    
+    for line in $(grep -H -n -E '\"' $csv)
+    do
+      #get just the qutes (") and check if it even number modulo 2 = 1 (even number)
+      if [ $(expr $(echo $line |tr -cd '\"' | wc -c) % 2) -eq 1 ]
+      then
+        echo $line
+      fi
+    done
+  done
+  IFS=$backupIFS
+}
+
+checkCSVsBigger1000k() {
+  splunk_home=$(getSplunkHome)
+  echo "Following csv are bigger then 1024kB:"
+  echo "====================================="
+  find $splunk_home -name *.csv -type f -size +1024k -exec ls -l {} \;
+}
+
+#DOC: checkCSVsChangedLessThenNHoursAgo
+#DOC:   NAME
+#DOC:     checkCSVsChangedLessThenNHoursAgo - print out all CSV files changed in the last N hours
+#DOC:   SYNOPSIS
+#DOC:     checkCSVsChangedLessThenNHoursAgo N
+#DOC:   DESCRIPTION
+#DOC:     This function helps find recent changes by printing out all CSV files that have been changed in the last N hours.
+#DOC:   EXAMPLES
+#DOC:     checkCSVsChangedLessThenNHoursAgo 24
+#DOC:         Prints out all CSV files changed in the last 24 hours.
+#DOC: 
+checkCSVsChangedLessThenNHoursAgo() {
+  if [ -z $1 ]
+  then
+    echo "You must enter the number of hours, for example: checkCSVsChangedLessThenNHoursAgo 24"
+  else  
+    splunk_home=$(getSplunkHome)
+    find $splunk_home/etc/apps/ -mmin -$(expr '60' '*' $1) -type f -name *.csv
+  fi
+}
+
+#DOC: checkCSVsChangedLessThenNDaysAgo
+#DOC:   NAME
+#DOC:     checkCSVsChangedLessThenNDaysAgo - print out all CSV files changed in the last N days
+#DOC:   SYNOPSIS
+#DOC:     checkCSVsChangedLessThenNDaysAgo N
+#DOC:   DESCRIPTION
+#DOC:     This function helps find recent changes by printing out all CSV files that have been changed in the last N days.
+#DOC:   EXAMPLES
+#DOC:     checkCSVsChangedLessThenNDaysAgo 7
+#DOC:         Prints out all CSV files changed in the last 7 days.
+#DOC: 
+checkCSVsChangedLessThenNDaysAgo() {
+  if [ -z $1 ]
+  then
+    echo "You must enter the number of days, for example: checkCSVsChangedLessThenNDaysAgo 7"
+  else
+    splunk_home=$(getSplunkHome)
+    find $splunk_home/etc/apps/ -mtime -$1 -type f -name *.csv
+  fi
+}
+
+#DOC: checkConfigsChangedLessThenNHoursAgo
+#DOC:   NAME
+#DOC:     checkConfigsChangedLessThenNHoursAgo - print all .conf files changed in the last N hours
+#DOC:   SYNOPSIS
+#DOC:     checkConfigsChangedLessThenNHoursAgo N
+#DOC:   DESCRIPTION
+#DOC:     This function prints all .conf files changed in the last N hours.
+#DOC:     The N argument specifies the number of hours to search for changes.
+#DOC: 
+checkConfigsChangedLessThenNHoursAgo() {
+  if [ -z $1 ]
+  then
+    echo "You must enter the number of hours, for example: checkConfigsChangedLessThenNHoursAgo 24"
+  else
+    splunk_home=$(getSplunkHome)
+    find $splunk_home/etc/apps/ -mmin -$(expr '60' '*' $1) -type f -name *.conf
+  fi
+}
+
+#DOC: checkConfigsChangedLessThenNDaysAgo
+#DOC:   NAME
+#DOC:     checkConfigsChangedLessThenNDaysAgo - print all .conf files changed in the last N days
+#DOC:   SYNOPSIS
+#DOC:     checkConfigsChangedLessThenNDaysAgo N
+#DOC:  DESCRIPTION
+#DOC:     This function prints all .conf files changed in the last N days.
+#DOC:     The N argument specifies the number of days to search for changes.
+#DOC: 
+checkConfigsChangedLessThenNDaysAgo() {
+  if [ -z $1 ]
+  then
+    echo "You must enter the number of days, for example: checkConfigsChangedLessThenNDaysAgo 7"
+  else
+    splunk_home=$(getSplunkHome)
+    find $splunk_home/etc/apps/ -mtime -$1 -type f -name *.conf
+  fi
+}
+
+#DOC: searchBlackouts
+#DOC:   NAME
+#DOC:     searchBlackouts - search for a device or string in all blackouts and blacklist files
+#DOC:   SYNOPSIS
+#DOC:     searchBlackouts what
+#DOC:   DESCRIPTION
+#DOC:     This function searches for a device or string in all blackouts and blacklist files.
+#DOC:     The what argument specifies the device or string to search for.
+#DOC: 
+searchBlackouts() {
+  if [ -z $1 ]
+  then
+    echo "You must enter what you are looking for in black lists, for example: searchBlackouts mySQLServer01"
+  else
+    local bl
+    local splunk_home=$(getSplunkHome)
+    for bl in $(find $splunk_home/etc/apps/ -type f -name *black*.csv)
+    do
+      grep -H $1 $bl
+    done
+  fi
+}
+
+#####################
+#                   #
+#   GET FUNCTIONS   #
+#                   #
+#####################
+
+#DOC: getUFPID
+#DOC:   NAME
+#DOC:     getUFPID - get the Splunk Universal Forwarder process ID
+#DOC:   SYNOPSIS
+#DOC:     getUFPID
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk Universal Forwarder process ID.
+#DOC:     It determines the process ID based on running processes and/or finding the splunkforwarder-*-manifest file.
+#DOC: 
+getUFPID() { 
+  local uf_pid=-1
+  local tmp_uf_home
+  local return_value=1
+  for uf_pid in $(ps axu | grep "splunkd"| grep -v grep | grep -v '\[splunkd'| sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
+  do
+    tmp_splunk_home=$(readlink /proc/$uf_pid/exe | sed 's/bin\/splunkd$//')
+    if [ $(find $tmp_uf_home -name splunkforwarder-*-manifest 2> /dev/null | wc -l) -eq 1 ]
+    then
+      return_value=0
+      break
+    fi
+  done
+
+  echo $uf_pid
+  return $return_value 
+}
+
+#DOC: getUFHome
+#DOC:   NAME
+#DOC:     getUFHome - get the Splunk Universal Forwarder home directory
+#DOC:   SYNOPSIS
+#DOC:     getUFHome
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk Universal Forwarder home directory.
+#DOC:     It determines the home directory based on running processes and/or finding the splunkforwarder-*-manifest file.
+#DOC: 
+getUFHome() { 
+  local uf_pid
+  local tmp_uf_home
+  local return_value=0
+  #Firts check the default option /opt/splunkforwarder
+  for manifest in /opt/splunkforwarder/splunkforwarder-*-manifest; do
+    if test -f "$manifest"; then
+      uf_home='/opt/splunkforwarder'
+    fi
+  done
+  if [ -z $uf_home ]
+  then
+    for uf_pid in $(ps axu | grep "splunkd"| grep -v grep | sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
+    do
+      tmp_splunk_home=$(readlink /proc/$uf_pid/exe | sed 's/bin\/splunkd$//')
+      if [ $(find $tmp_uf_home -name splunkforwarder-*-manifest 2> /dev/null | wc -l) -eq 1 ]
+      then
+        uf_home=$tmp_uf_home
+        break
+      fi
+    done
+  fi
+  if [ -z $uf_home ]
+  then
+    uf_home=$(find / -name splunkforwarder-*-manifest 2> /dev/null | sed -e 's/\/splunkforwarder-.*-manifest//'| sort | uniq)
+  fi
+  if [ -z $uf_home ]
+  then
+    return_value=1
+  fi
+  uf_home=$(echo "$uf_home" | sed 's/\/$//')
+  echo $uf_home 
+  return $return_value 
+}
+
+#DOC: getSplunkPID
+#DOC:   NAME
+#DOC:     getSplunkPID - get the Splunk Enterprise process ID
+#DOC:   SYNOPSIS
+#DOC:     getSplunkPID
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk Enterprise process ID.
+#DOC:     It determines the process ID based on running processes and/or finding the splunk-*-manifest file.
+#DOC: 
+getSplunkPID() { 
+  local uf_pid=-1
+  local tmp_uf_home
+  local return_value=1
+  for uf_pid in $(ps axu | grep "splunkd"| grep -v grep | grep -v '\[splunkd'| sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
+  do
+    tmp_splunk_home=$(readlink /proc/$uf_pid/exe | sed 's/bin\/splunkd$//')
+    if [ $(find $tmp_uf_home -name splunk-*-manifest 2> /dev/null | wc -l) -eq 1 ]
+    then
+      return_value=0
+      break
+    fi
+  done
+
+  echo $uf_pid
+  return $return_value 
+}
+
+#DOC: getSplunkHome
+#DOC:   NAME
+#DOC:     getSplunkHome - get the Splunk Enterprise home directory
+#DOC:   SYNOPSIS
+#DOC:     getSplunkHome
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk Enterprise home directory.
+#DOC:     It determines the home directory based on running processes and/or finding the splunk-*-manifest file.
+#DOC: 
+getSplunkHome() { 
+  local splunk_pid
+  local tmp_splunk_home
+  local manifest
+  #Firts check the default option /opt/splunk
+  for manifest in /opt/splunk/splunk-*-manifest; do
+    if test -f "$manifest"; then
+      splunk_home='/opt/splunk'
+    fi
+  done
+  if [ -z $splunk_home ]
+  then
+    for splunk_pid in $(ps axu | grep "splunkd"| grep -v grep | sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
+    do
+      tmp_splunk_home=$(readlink /proc/$splunk_pid/exe | sed 's/bin\/splunkd$//')
+      if [ $(find $tmp_splunk_home -name splunk-*-manifest 2> /dev/null | wc -l) -eq 1 ]
+      then
+        splunk_home=$(find $tmp_splunk_home -name splunk-*-manifest ! -path '/tmp/*' 2> /dev/null | sed -e 's/\/splunk-.*-manifest//' | sort | uniq)
+        break
+      fi
+    done
+  fi
+  if [ -z $splunk_home ]
+  then
+    splunk_home=$(find / -name splunk-*-manifest ! -path '/tmp/*' 2> /dev/null | sed -e 's/\/splunk-.*-manifest//' | sort | uniq)
+  fi
+  splunk_home=$(echo "$splunk_home" | sed 's/\/$//')
+  if [ $(echo "$splunk_home" | wc -w) -gt 1 ]
+  then
+    echo "ERROR: Ambiguous splunk home directory." >&2
+    echo "Using: find / -name splunk-*-manifest ! -path '/tmp/*' 2> /dev/null; find manifest in multiple locations" >&2
+    find / -name splunk-*-manifest ! -path '/tmp/*' 2> /dev/null >&2
+    exit 111
+  else
+    echo $splunk_home
+  fi
+}
+
+#DOC: setSplunkRole
+#DOC:   NAME
+#DOC:     setSplunkRole - set the Splunk role by writing to the splunk.role file
+#DOC:   SYNOPSIS
+#DOC:     setSplunkRole [role]
+#DOC:   DESCRIPTION
+#DOC:     This function sets the Splunk role by writing to the splunk.role file.
+#DOC:     The role argument is optional. If not provided, the function will prompt the user to choose a role from a list of valid roles.
+#DOC: 
+setSplunkRole() {
+  local role=$1
+  splunk_home=$(getSplunkHome)
+  if [ -z $role ]
+  then
+    echo "Please choose a role from the following list:"
+    echo "I: Indexer"
+    echo "SH: Search Head"
+    echo "SA: Standalone"
+    echo "SAD: Standalone + Deployment"
+    echo "D: Deployment server"
+    echo "HF: Heavy Forwarder"
+    echo "CM: Cluster Master"
+    echo "SHCD: Search Head Cluster Deployer"
+    echo "CMSHCD: Cluster Master + Search Head Cluster Deployer"
+    read -p "Enter the role: " role
+  fi
+  role=$(echo $role | tr '[a-z]' '[A-Z]')
+  case $role in
+    I|SH|SA|SAD|D|HF|CM|SHCD|CMSHCD)
+      echo $role > $splunk_home/etc/system/local/splunk.role
+      ;;
+    *)
+      echo "ERROR: Invalid role entered"
+      ;;
+  esac
+}
+
+#DOC: getSplunkRole
+#DOC:   NAME
+#DOC:     getSplunkRole - get the Splunk role code
+#DOC:   SYNOPSIS
+#DOC:     getSplunkRole
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk role code.
+#DOC:     It reads the role code from the $SPLUNK_HOME/etc/system/local/splunk.role file.
+#DOC:  
+getSplunkRole() {
+  local return_value=0
+  splunk_home=$(getSplunkHome)
+  if [ -e $splunk_home/etc/system/local/splunk.role ]
+    then
+      if [ ! -r $splunk_home/etc/system/local/splunk.role ]
+      then
+        echo "ERROR: ${splunk_home}/etc/system/local/splunk.role not readable"
+        return_value=2
+      else
+	      detected_server_role=$(cat $splunk_home/etc/system/local/splunk.role)
+	      echo $detected_server_role
+      fi
+    else
+	echo "ERROR: ${splunk_home}/etc/system/local/splunk.role not exist"
+  return_value=1
+  fi  
+  return $return_value
+}
+
+#DOC: getSplunkRoleName
+#DOC:   NAME
+#DOC:     getSplunkRoleName - translate Splunk role code to human-readable role name
+#DOC:   SYNOPSIS
+#DOC:     getSplunkRoleName [rolecode]
+#DOC:   DESCRIPTION
+#DOC:     This function translates a Splunk role code to a human-readable role name.
+#DOC:     The rolecode argument is optional. If not provided, the function will use the role code from $SPLUNK_HOME/etc/system/local/splunk.role.
+#DOC: 
+getSplunkRoleName() {
+  #Make sure server role is all Capital and correct
+  if [ -z $1 ]
+  then
+    server_role=$(getSplunkRole)
+  else
+    server_role=$(echo $1 | tr '[a-z]' '[A-Z]')
+  fi
+  case $server_role in
+    I) server_role_name='Indexer'
+        ;;
+    SH) server_role_name='Search Head' 
+        ;;
+    SA) server_role_name='Standalone'
+        ;;
+    SAD) server_role_name='Standalone + Deployment'
+        ;;
+    D) server_role_name='Deployment server'
+        ;;
+    HF) server_role_name='Heavy Forwarder'
+        ;;
+    CM) server_role_name='Cluster Master'
+        ;;
+    SHCD) server_role_name='Search Head Cluster Deployer'
+        ;; 
+    CMSHCD) server_role_name='Cluster Master + Search Head Cluster Deployer'
+        ;; 		
+    *) server_role_name="Unknown"
+    ;;
+  esac
+
+  echo $server_role_name
+}
+
+#DOC: getSplunkDatastore
+#DOC:   NAME
+#DOC:     getSplunkDatastore - get the Splunk datastore folder
+#DOC:   SYNOPSIS
+#DOC:     getSplunkDatastore
+#DOC:   DESCRIPTION
+#DOC:     This function gets the Splunk datastore folder.
+#DOC:     It reads the datastore folder from the $SPLUNK_HOME/etc/splunk-launch.conf file.
+#DOC:   
+getSplunkDatastore() {
+  if [ -z "$SPLUNK_HOME" ]; then
+    # "SPLUNK_HOME is not set"
+    SPLUNK_HOME=$(getSplunkHome)
+  else
+    if [ $ -e "$SPLUNK_HOME/splunk-*-manifest" ]; then
+        # "SPLUNK_HOME is set but incorrect"
+        SPLUNK_HOME=$(getSplunkHome)
+    fi
+  fi
+  grep -E "^SPLUNK_DB" $SPLUNK_HOME/etc/splunk-launch.conf | sed -e 's/SPLUNK_DB *= *//'
+}
+
+#DOC: getSplunkVersion
+#DOC:   NAME
+#DOC:     getSplunkVersion - get the version of Splunk installed on the system
+#DOC:   SYNOPSIS
+#DOC:     getSplunkVersion
+#DOC:   DESCRIPTION
+#DOC:     This function gets the version of Splunk installed on the system.
+#DOC:     It reads the version from the $SPLUNK_HOME/etc/splunk.version file.
+#DOC: 
+getSplunkVersion() {
+  local splunk_home=$(getSplunkHome)	
+  if [ -e $splunk_home/etc/splunk.version ]
+    then
+      if [ ! -r $splunk_home/etc/splunk.version ]
+      then
+        echo "ERROR: ${splunk_home}/etc/splunk.versione not readable"
+      else
+        grep "VERSION=" $splunk_home/etc/splunk.version | sed 's/VERSION=//'
+      fi
+    else
+      echo "ERROR: ${splunk_home}/etc/splunk.version not exist"
+  fi  
+}
+
+#DOC: getSplunkUser
+#DOC:   NAME
+#DOC:     getSplunkUser - get Splunk Enterprise user based on running processes and/or finding file splunk-*-manifest
+#DOC:   SYNOPSIS
+#DOC:     getSplunkUser
+#DOC:   DESCRIPTION
+#DOC:     This function returns the Splunk Enterprise user based on running processes and/or finding the file splunk-*-manifest.
+#DOC: 
+getSplunkUser() { 
+  local splunk_pid
+  local tmp_splunk_home
+  for splunk_pid in $(ps axu | grep "splunkd"| grep -v grep | sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
+  do
+    tmp_splunk_home=$(readlink /proc/$splunk_pid/exe | sed 's/bin\/splunkd$//')
+    if [ $(find $tmp_splunk_home -name splunk-*-manifest 2> /dev/null | wc -l) -eq 1 ]
+    then
+      splunk_user=$(ps -h -p $splunk_pid -o ruser:32,pid:1,cmd:1 | cut -d' ' -f1)
+      break
+    fi
+  done
+  echo $splunk_user 
+}
+
+#DOC: getSplunkBasicInfo
+#DOC:   NAME
+#DOC:     getSplunkBasicInfo - print basic information about the Splunk installation
+#DOC:   SYNOPSIS
+#DOC:     getSplunkBasicInfo [-x|--xml]
+#DOC:   DESCRIPTION
+#DOC:     This function prints basic information about the Splunk installation on the system.
+#DOC:     It accepts an optional switch -x or --xml to print the output in XML format.
+#DOC: 
+getSplunkBasicInfo() {
+    splunk_home=$(getSplunkHome)
+    splunk_datastore=$(getSplunkDatastore)
+    splunk_role=$(getSplunkRole)
+    splunk_role_name=$(getSplunkRoleName $splunk_role)
+    splunk_version=$(getSplunkVersion)
+    splunk_user="THIS NEEDS TO BE EDIT REDONE getUser is using config in which user shall not be."
+
+    if [ "$1" = "-x" ] || [ "$1" = "--xml" ]; then
+        echo "<splunk_info>"
+        echo " <hostname>$(hostname)</hostname>"
+        echo " <splunk_home>$splunk_home</splunk_home>"
+        echo " <splunk_datastore>$splunk_datastore</splunk_datastore>"
+        echo " <splunk_role>$splunk_role</splunk_role>"
+        echo " <splunk_role_name>$splunk_role_name</splunk_role_name>"
+        echo " <splunk_version>$splunk_version</splunk_version>"
+        echo "</splunk_info>"
+    else
+        echo "BASIC INFO"
+        echo "=========="
+        echo "Hostname: $(hostname)"
+        echo "Splunk home: $splunk_home"
+        echo "Splunk datastore: $splunk_datastore"
+        echo "Splunk role:       $splunk_role"
+        echo "Splunk role name:  $splunk_role_name"
+        echo "Splunk version:    $splunk_version"
+        echo ''
+    fi
+}
+
+#DOC: splunkListAppsVersion
+#DOC:   NAME
+#DOC:       splunkListAppsVersion - print the version of Splunk apps installed on the system
+#DOC:   SYNOPSIS
+#DOC:      splunkListAppsVersion [-x|--xml]
+#DOC:   DESCRIPTION
+#DOC:       This function prints the version of Splunk apps installed on the system.
+#DOC:       It accepts an optional switch -x or --xml to print the output in XML format.
+#DOC: 
+splunkListAppsVersion() {
+    local splunk_home=$(getSplunkHome)
+    if [ "$1" = "-x" ] || [ "$1" = "--xml" ]; then
+        echo "<apps>"
+        for app in $(grep -i "version =" $splunk_home/etc/apps/*/default/app.conf | sed 's/-idx\//\//' | sed 's/-data\//\//' | sed 's/-ui\//\//' | sed 's/-sh\//\//' | sort | uniq | sed 's/\/default\/app.conf//' |rev | cut -d\/ -f1 | rev |sed 's/\:version = /<\/app_name><version>/')
+        do 
+            echo "<app><app_name>$app</version></app>"
+        done
+        echo "</apps>"
+    else
+        grep -i "version =" $splunk_home/etc/apps/*/default/app.conf | sed 's/-idx\//\//' | sed 's/-data\//\//' | sed 's/-ui\//\//' | sed 's/-sh\//\//' | sort | uniq | sed 's/\/default\/app.conf//' |rev | cut -d\/ -f1 | rev | sed 's/version = //' |column -s: -t
+    fi
+}
+
+#DOC: splunkListCSVLookups
+#DOC:   NAME
+#DOC:     splunkListCSVLookups - list Splunk CSV lookups with optional output formats
+#DOC:   SYNOPSIS
+#DOC:     splunkListCSVLookups [--header] [--sdf] [--appsdir directory]
+#DOC:   DESCRIPTION
+#DOC:     This function lists all CSV lookups in the specified directory or the Splunk apps directory.
+#DOC:     It checks if the SPLUNK_HOME environment variable is set.
+#DOC:     If it is not set, it calls the getSplunkHome function to get the value of splunk_home.
+#DOC:     If it is set, it assigns its value to the local variable splunk_home.
+#DOC:   OPTIONS
+#DOC:     --header
+#DOC:       If this option is provided, it prints the filepath and the header of each CSV file.
+#DOC:     --sdf
+#DOC:       If this option is provided, it prints the app name, filename, and header in the Splunk digest format.
+#DOC:     --appsdir DIRECTORY
+#DOC:       If this option is provided, it uses the provided directory instead of splunk_home/etc/apps.
+#DOC:   NOTES
+#DOC:     The --header and --sdf options are mutually exclusive.
+#DOC: 
+splunkListCSVLookups() {
+  local header=false
+  local sdf=false
+  local appsdir=""
+
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --header)
+        header=true
+        shift
+        ;;
+      --sdf)
+        sdf=true
+        shift
+        ;;
+      --appsdir)
+        shift
+        appsdir=$1
+        shift
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        echo "Usage: splunkListCSVLookups [--header] [--sdf] [--appsdir directory]" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [ "$header" = true ] && [ "$sdf" = true ]; then
+    echo "Error: --header and --sdf cannot be used together." >&2
+    return 1
+  fi
+
+  if [ -n "$SPLUNK_HOME" ]
+  then
+    local splunk_home=$SPLUNK_HOME
+  else
+    local splunk_home=$(getSplunkHome)
+  fi
+
+  if [ -z "$appsdir" ]
+  then
+    appsdir=$splunk_home/etc/apps
+  fi
+
+  if [ ! -d "$appsdir" ]
+  then
+    echo "Error: Directory $appsdir does not exist." >&2
+    return 1
+  fi
+
+  if [ ! -r "$appsdir" ]
+  then
+    echo "Error: Directory $appsdir is not readable." >&2
+    return 1
+  fi
+
+  for file in $(ls $appsdir/*/lookups/*.csv)
+  do
+    local app=$(basename $(dirname $(dirname $file)))
+    local filename=$(basename $file)
+    local fileheader=$(head -n 1 $file | sed 's/\r$//')
+
+    if [ "$header" = true ]
+    then
+      echo "${file}:$fileheader"
+    elif [ "$sdf" = true ]
+    then
+      echo "app = $app; file = $filename; header = $fileheader;"
+    else
+      echo "$file"
+    fi
+  done
+}
+
+
+
+
+#DOC: splunkListAppCustomizations
+#DOC:   NAME
+#DOC:     splunkListAppCustomizations - retrieve customizations for Splunk apps
+#DOC:   SYNOPSIS
+#DOC:     splunkListAppCustomizations [-d [HTML]] [--savedsearches] [--inputs] [--props] [--indexes] [--transforms] [--macros] [--app] [--collections] [--eventtypes] [--fields] [--savedsearches] [--tags]
+#DOC:   DESCRIPTION
+#DOC:     This function retrieves customizations for Splunk apps.
+#DOC:     The switches are optional and specify which customizations to retrieve.
+#DOC:     If no switches are provided, the function will retrieve all customizations.
+#DOC:
+#DOC:     The -d switch is optional and specifies whether to print the contents of each file.
+#DOC:     If the -d switch is followed by the HTML argument, the file contents will be printed in HTML format.
+#DOC:
+#DOC:     The function searches for files under the local folder of each Splunk app using the following pattern like:
+#DOC:       $SPLUNK_HOME/etc/apps/*/local/*.conf $SPLUNK_HOME/etc/shcluster/apps/*/local/*.conf $SPLUNK_HOME/etc/master-apps/*/local/*.conf etc.
+#DOC:
+#DOC:     It excludes "empty" files (i.e., contains only empty lines or white characters).
+#DOC:     And also files which has the same content as its default version (by replacing `/local/` with `/default/` in the file path).
+#DOC:  
+splunkListAppCustomizations() {
+  local files=""
+  local valid_switches=" savedsearches inputs props indexes transforms macros app collections eventtypes fields savedsearches tags "
+  local usage="Usage: splunkListAppCustomizations [-d [HTML]] [--$(echo $valid_switches | sed 's/ /] [--/g')]"
+  local switch
+  local file
+  local print_file_contents=false
+  local html_format=false
+  
+  local disclaimer="DISCLAIMER: Covering ONLY config files in local folders, NOT changes in scripts, commands, lookups or dashboards."
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h)
+        echo "$usage"
+        echo "Valid switches: $valid_switches"
+        return
+        ;;
+      -d)
+        print_file_contents=true
+        shift
+        if [ "$1" = "HTML" ]; then
+          html_format=true
+          shift
+        fi
+        ;;
+      --*)
+        switch="$(echo "$1" | cut -c 3-)"
+        if echo "$valid_switches" | grep -q " $switch "; then
+          file="${switch}.conf"
+          files="$files $file"
+        else
+          echo "Invalid switch: $1"
+        fi
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  if [ -n "$SPLUNK_HOME" ]
+  then
+    splunk_home=$SPLUNK_HOME
+  else
+    splunk_home=$(getSplunkHome)
+  fi
+
+  echo $disclaimer
+
+  if [ "$html_format" = true ]; then 
+    echo "<!DOCTYPE html>"
+    echo "<html>"
+    echo "<head>"
+    echo "<title>Splunk App Customizations</title>"
+    echo "<style>"
+    echo "table {"
+    echo "  width: 100%;"
+    echo "  border-collapse: collapse;"
+    echo "}"
+    echo "table, th, td {"
+    echo "  border: 1px solid black;"
+    echo "  padding: 5px;"
+    echo "}"
+    echo "tr[data-status=\"Changed\"] {"
+    echo "  background-color: orange;"
+    echo "}"
+    echo "tr[data-status=\"Added\"] {"
+    echo "  background-color: rgb(29, 238, 29);"
+    echo "}"
+    echo "tr[data-status=\"ChangedFrom\"] {"
+    echo "  background-color: #f8c566; /* Light orange */"
+    echo "}"
+    echo "tr[data-status=\"ChangedTo\"] {"
+    echo "  background-color: orange;"
+    echo "}"
+    echo "h1 { font-size: 2.5em; }"
+		echo "h2 { font-size: 2.0em; }"
+		echo "h3 { font-size: 1.75em; }"
+		echo "h4 { font-size: 1.5em; }"
+		echo "h5 { font-size: 1.25em; }"
+		echo "h6 { font-size: 1.1em; }"
+    echo "</style>"
+    echo "</head>"
+    echo "<body>"
+  fi 
+
+  if [ -z "$files" ]; then 
+    local_files=$(ls -1 $splunk_home/etc/apps/*/local/*.conf 2>/dev/null)
+    local_files="$local_files $(ls -1 $splunk_home/etc/slave-apps/*/local/*.conf 2>/dev/null)"
+    local_files="$local_files $(ls -1 $splunk_home/etc/peer-apps/*/local/*.conf 2>/dev/null)"
+    local_files="$local_files $(ls -1 $splunk_home/etc/master-apps/*/local/*.conf 2>/dev/null)"
+    local_files="$local_files $(ls -1 $splunk_home/etc/manager-apps/*/local/*.conf 2>/dev/null)"
+    local_files="$local_files $(ls -1 $splunk_home/etc/shcluster/apps/*/local/*.conf 2>/dev/null)"
+    local_files="$local_files $(ls -1 $splunk_home/etc/deployment-apps/*/local/*.conf 2>/dev/null)"
+    tmp_config_updates=$(mktemp)
+    for local_file in $local_files; do 
+      if [ $(tr -cd '\041-\176' < "$local_file" | wc -c) -eq 0 ]; then
+        continue
+      fi
+      default_file=$(echo "$local_file" | sed 's/\/local\//\/default\//')
+      if [ $(diff -w "$local_file" "$default_file" 2> /dev/null | wc -c) -eq 0 ]; then
+        continue
+      fi
+      if [ "$print_file_contents" = true ]; then
+        iniIdentifyUpdates $default_file $local_file > $tmp_config_updates
+        if [ "$html_format" = true ]; then 
+            echo "<h1 id=\"h1_$local_file\">$local_file</h1>"
+            echo "<table>"
+            last_status=""
+            last_value=""
+            while IFS= read -r line; do 
+#                 echo "<pre>$line</pre>"
+                if echo "$line" | grep -qE '^(Added|Added Section|Changed Section|DiffOutput|Changed|ChangedFrom|ChangedTo):'; then 
+                    # If this is not the first line, print the last status and value
+                    if [ -n "$last_status" ]; then
+                        #If it's Section then we use h2
+                        if echo "$last_status" | grep -qE '(Added Section|Changed Section)'
+                        then
+                          echo "<tr data-status=\"$last_status\"><td><h2>${last_status}:</h2></td><td><h2>${last_value}</h2></td></tr>"
+                        else
+                          echo "<tr data-status=\"$last_status\"><td>${last_status}:</td><td>${last_value}</td></tr>"
+                        fi
+                    fi
+                    # Split the line into status and value
+                    last_status=$(echo "$line" | cut -d':' -f1)
+                    last_value=$(echo "$line" | cut -d':' -f2-)
+                else 
+                    # This line is a continuation of the last value
+                    last_value="${last_value}<br>${line}"
+                fi 
+            done < "$tmp_config_updates"
+            # Print the last status and value
+            if [ -n "$last_status" ]; then
+                echo "<tr data-status=\"$last_status\"><td>${last_status}:</td><td>${last_value}</td></tr>"
+            fi
+            echo "</table>"
+        else 
+            echo "=================================================="
+            echo "File: $local_file"
+            if [ -e $default_file ]
+            then
+              cat $tmp_config_updates
+            else
+              cat $local_file
+            fi
+            echo ""
+            echo "=================================================="
+            echo ""
+        fi
+      else 
+        echo "$local_file"
+      fi
+    done 
+  else 
+    for file in $files; do 
+      local_files=$(ls -1 $splunk_home/etc/apps/*/local/"$file" 2>/dev/null)
+      local_files="$local_files $(ls -1 $splunk_home/etc/slave-apps/*/local/"$file" 2>/dev/null)"
+      local_files="$local_files $(ls -1 $splunk_home/etc/peer-apps/*/local/"$file" 2>/dev/null)"
+      local_files="$local_files $(ls -1 $splunk_home/etc/master-apps/*/local/"$file" 2>/dev/null)"
+      local_files="$local_files $(ls -1 $splunk_home/etc/manager-apps/*/local/"$file" 2>/dev/null)"
+      local_files="$local_files $(ls -1 $splunk_home/etc/shcluster/apps/*/local/"$file" 2>/dev/null)"
+      local_files="$local_files $(ls -1 $splunk_home/etc/deployment-apps/*/local/"$file" 2>/dev/null)"
+      for local_file in $local_files; do 
+        if [ $(tr -cd '\041-\176' < "$local_file" | wc -c) -eq 0 ]; then
+          continue
+        fi
+        default_file=$(echo "$local_file" | sed 's/\/local\//\/default\//')
+        if [ $(diff "$local_file" "$default_file" 2> /dev/null | wc -c) -eq 0 ]; then
+          continue
+        fi
+        if [ "$print_file_contents" = true ]; then
+          iniIdentifyUpdates $default_file $local_file > $tmp_config_updates
+          if [ "$html_format" = true ]; then 
+            echo "<h1 id=\"h1_$local_file\">$local_file</h1>"
+            echo "<table>"
+            last_status=""
+            last_value=""
+            while IFS= read -r line; do 
+#                 echo "<pre>$line</pre>"
+                if echo "$line" | grep -qE '^(Added|Added Section|Changed Section|DiffOutput|Changed|ChangedFrom|ChangedTo):'; then 
+                    # If this is not the first line, print the last status and value
+                    if [ -n "$last_status" ]; then
+                        #If it's Section then we use h2
+                        if echo "$last_status" | grep -qE '(Added Section|Changed Section)'
+                        then
+                          echo "<tr data-status=\"$last_status\"><td><h2>${last_status}:</h2></td><td><h2>${last_value}</h2></td></tr>"
+                        else
+                          echo "<tr data-status=\"$last_status\"><td>${last_status}:</td><td>${last_value}</td></tr>"
+                        fi
+                    fi
+                    # Split the line into status and value
+                    last_status=$(echo "$line" | cut -d':' -f1)
+                    last_value=$(echo "$line" | cut -d':' -f2-)
+                else 
+                    # This line is a continuation of the last value
+                    last_value="${last_value}<br>${line}"
+                fi 
+            done < "$tmp_config_updates"
+            # Print the last status and value
+            if [ -n "$last_status" ]; then
+                echo "<tr data-status=\"$last_status\"><td>${last_status}:</td><td>${last_value}</td></tr>"
+            fi
+            echo "</table>"
+          else 
+            echo "=================================================="
+            echo "File: $local_file"
+            if [ -e $default_file ]
+            then
+              cat $tmp_config_updates
+            else
+              cat $local_file
+            fi
+            echo ""
+            echo "=================================================="
+            echo ""
+          fi
+        else 
+          echo "$local_file"
+        fi
+      done
+     
+    done 
+  fi 
+  
+  rm -f $tmp_config_updates
+  
+  if [ "$html_format" = true ]; then 
+    echo "</body>"
+    echo "</html>"
+  fi 
+}
+
+#DOC: splunkListDashboardCustomizations
+#DOC:   NAME
+#DOC:     splunkListDashboardCustomizations - retrieve customizations for Splunk Dashboards
+#DOC:   SYNOPSIS
+#DOC:     splunkListDashboardCustomizations
+#DOC:   DESCRIPTION
+#DOC:     This function retrieves customizations for Splunk Dashboards.
+#DOC: 
+splunkListDashboardCustomizations() {
+  if [ -n "$SPLUNK_HOME" ]
+  then
+    splunk_home=$SPLUNK_HOME
+  else
+    splunk_home=$(getSplunkHome)
+  fi
+  ls -1 $splunk_home/etc/apps/*/local/data/ui/*/*.xml
+}
+
+#DOC: splunkAddCSVLookup
+#DOC:   NAME
+#DOC:     splunkAddCSVLookup - add a CSV lookup to a Splunk app
+#DOC:   SYNOPSIS
+#DOC:     splunkAddCSVLookup appfolder csvfile [--case_sensitive] [--max_matches max_matches] [--wildcards fields]
+#DOC:   DESCRIPTION
+#DOC:     This function adds a CSV lookup to a Splunk app by copying the CSV file to the app's lookups directory and creating an entry in the transforms.conf file.
+#DOC:     The appfolder argument specifies the path to the app folder. If it ends with a trailing `/` or `/lookups`, these will be stripped before copying the csvfile.
+#DOC:     The csvfile argument specifies the path to the CSV file.
+#DOC:     The --case_sensitive option is an optional switch to enable case-sensitive matching.
+#DOC:     The --max_matches option is an optional switch to specify the maximum number of matches, which must be within the range of 1 to 1000.
+#DOC:     The --wildcards option is an optional switch to specify a comma-separated list of fields for wildcard matching.
+#DOC: 
+splunkAddCSVLookup() {
+    # Initialize local variables
+    local appfolder=""
+    local csvfile=""
+    local case_sensitive=0
+    local max_matches=""
+    local wildcards=""
+    local error_messages=""
+
+    # Parse command line arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            # Handle switches
+            --case_sensitive)
+                case_sensitive=1
+                shift
+                ;;
+            --max_matches)
+                max_matches="$2"
+                if [ "$max_matches" -lt 1 ] || [ "$max_matches" -gt 1000 ]; then
+                    error_messages="${error_messages}The value of --max_matches must be within the range of 1 to 1000.\n"
+                fi
+                shift 2
+                ;;
+            --wildcards)
+                wildcards="$2"
+                shift 2
+                ;;
+            *)
+                # Handle positional arguments
+                if [ -d "$1" ]; then
+                    appfolder="$1"
+                    shift
+                elif [ -f "$1" ]; then
+                    csvfile="$1"
+                    shift
+                else
+                    # Handle unknown arguments
+                    error_messages="${error_messages}Unknown argument: $1\n"
+                    shift
+                fi
+                ;;
+        esac
+    done
+
+    # Check for required arguments and strip trailing / and /lookups from appfolder.
+    if [ -z "${appfolder}" ]; then 
+        error_messages="${error_messages}Missing required argument: appfolder\n"
+    else 
+        appfolder=$(echo "$appfolder" | sed 's/\/$//' | sed 's/\/lookups$//')
+    fi 
+    if [ -z "${csvfile}" ]; then 
+        error_messages="${error_messages}Missing required argument: csvfile\n"
+    fi 
+
+    # Check for wildcard fields in CSV header.
+    if [ -n "$wildcards" ]; then 
+        header=$(head -n 1 $csvfile | tr -d '"')
+        wildcards_str=""
+        IFS=','
+        for field in $wildcards; do 
+            if echo ",${header}," | grep -q ",${field},"; then 
+                wildcards_str="${wildcards_str}WILDCARD($field), "
+            else 
+                error_messages="${error_messages}Unknown field: $field. The fields in the header of the CSV file are: $header\n"
+            fi 
+        done 
+
+        if [ -n "${error_messages}" ]; then 
+            echo -e "${error_messages}"
+            return 1 
+        fi 
+
+        wildcards_str=$(echo "$wildcards_str" | sed 's/, $//')
+    fi 
+
+    # Print usage message and exit if there were any errors.
+    if [ -n "${error_messages}" ]; then 
+        echo -e "${error_messages}"
+        echo "Usage: splunkAddCSVLookup appfolder csvfile [--case_sensitive] [--max_matches max_matches] [--wildcards fields]"
+        return 1 
+    fi 
+
+    # Create lookups and local directories if they do not exist.
+    mkdir -p $appfolder/lookups $appfolder/local
+    local csvfile_name=$(echo $csvfile | rev | cut -d'/' -f1|rev)
+    # Copy CSV file to app lookups directory and create transforms.conf entry.
+    cp $csvfile $appfolder/lookups/
+    echo "[$csvfile_name]
+batch_index_query = 0 
+case_sensitive_match = $case_sensitive 
+filename = $csvfile_name" >> $appfolder/local/transforms.conf
+
+    # Add max_matches option if specified.
+    if [ -n "$max_matches" ]; then 
+        echo "max_matches = $max_matches" >> $appfolder/local/transforms.conf 
+    fi 
+
+    # Add match_type option if wildcards were specified.
+    if [ -n "$wildcards_str" ]; then 
+        echo "match_type = $wildcards_str" >> $appfolder/local/transforms.conf 
+    fi 
+}
+
+#DOC: splunkAddMacros
+#DOC:   NAME
+#DOC:     splunkAddMacros - add a macro to Splunk
+#DOC:   SYNOPSIS
+#DOC:     splunkAddMacros appfolder macrosfile
+#DOC:   DESCRIPTION
+#DOC:     This function adds a macro to Splunk by appending the content of a file to the macros.conf file under a given app folder.
+#DOC:     The appfolder argument specifies the app folder to use.
+#DOC:     The macrosfile argument specifies the file containing the macro code to add.
+#DOC:
+splunkAddMacros() {
+    local appfolder="$1"
+    local macrosfile="$2"
+    local error_messages=""
+    if [[ -z "${appfolder}" ]]; then
+        error_messages="${error_messages}Missing required argument: appfolder\n"
+    elif [[ ! -d "${appfolder}" ]]; then
+        error_messages="${error_messages}Invalid appfolder: ${appfolder} is not a directory\n"
+    elif [[ ! -w "${appfolder}" ]]; then
+        error_messages="${error_messages}Permission denied: cannot write to ${appfolder}\n"
+    fi
+    if [[ -z "${macrosfile}" ]]; then
+        error_messages="${error_messages}Missing required argument: macrosfile\n"
+    elif [[ ! -f "${macrosfile}" ]]; then
+        error_messages="${error_messages}Invalid macrosfile: ${macrosfile} is not a file\n"
+    elif [[ ! -r "${macrosfile}" ]]; then
+        error_messages="${error_messages}Permission denied: cannot read ${macrosfile}\n"
+    fi
+    if [[ -n "${error_messages}" ]]; then
+        echo -e "${error_messages}" >&2
+        echo "Usage: splunkAddMacros appfolder macrosfile" >&2
+        return 1
+    fi
+    local macrosconf=$(echo "${appfolder}/local/macros.conf" | sed 's://:/:g' | sed 's:/default/local/:/local/:g' | sed 's:/default/local/:/local/:g')
+    mkdir -p "$(dirname "${macrosconf}")"
+    tr -cd '\040-\176,\012' < "${macrosfile}" >> "${macrosconf}"
+    echo "" >> "${macrosconf}"
+}
+
+
+#DOC: splunkAddSearch
+#DOC:   NAME
+#DOC:     splunkAddSearch - add a search to Splunk
+#DOC:   SYNOPSIS
+#DOC:     splunkAddSearch appfolder splfile [--cron_schedule cron_schedule] [--summary_index_name summary_index_name] [--earliest_time earliest_time] [--latest_time latest_time]
+#DOC:   DESCRIPTION
+#DOC:     This function adds a search to Splunk by appending the content of a file to the savedsearches.conf file under a given app folder.
+#DOC:     The appfolder argument specifies the app folder to use.
+#DOC:     The splfile argument specifies the file containing the search code to add.
+#DOC:     The --cron_schedule option specifies the cron schedule for the search.
+#DOC:     The --summary_index_name option specifies the summary index name for the search.
+#DOC:     The --earliest_time option specifies the earliest time for the search.
+#DOC:     The --latest_time option specifies the latest time for the search.
+#DOC:
+splunkAddSearch() {
+    local appfolder=""
+    local splfile=""
+    local cron_schedule="*/5 * * * *"
+    local summary_index_name="summary"
+    local earliest_time="-5m@m"
+    local latest_time="now"
+    local error_messages=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --cron_schedule)
+                cron_schedule="$2"
+                shift 2
+                ;;
+            --summary_index_name)
+                summary_index_name="$2"
+                shift 2
+                ;;
+            --earliest_time)
+                earliest_time="$2"
+                shift 2
+                ;;
+            --latest_time)
+                latest_time="$2"
+                shift 2
+                ;;
+            *)
+                if [[ -d "$1" ]]; then
+                    appfolder="$1"
+                    shift
+                elif [[ -f "$1" ]]; then
+                    splfile="$1"
+                    shift
+                else
+                    error_messages="${error_messages}Unknown argument: $1\n"
+                    shift
+                fi
+                ;;
+        esac
+    done
+    if [[ -z "${appfolder}" ]]; then
+        error_messages="${error_messages}Missing required argument: appfolder\n"
+    fi
+    if [[ -z "${splfile}" ]]; then
+        error_messages="${error_messages}Missing required argument: splfile\n"
+    fi
+    if [[ -n "${error_messages}" ]]; then
+        echo -e "${error_messages}"
+        echo "Usage: splunkAddSearch appfolder splfile [--cron_schedule cron_schedule] [--summary_index_name summary_index_name] [--earliest_time earliest_time] [--latest_time latest_time]"
+        return 1
+    fi
+    local savedsearches=$(echo "${appfolder}/local/savedsearches.conf" | sed 's://:/:g' | sed 's:/default/local/:/local/:g' | sed 's:/default/local/:/local/:g')
+    mkdir -p "$(dirname "${savedsearches}")"
+    local searchname=$(basename "${splfile}" .spl)
+    local searchAttributes="action.email.useNSSubject = 1
+action.summary_index = 1
+action.summary_index._name = ${summary_index_name}
+alert.track = 0
+cron_schedule = ${cron_schedule}
+dispatch.earliest_time = ${earliest_time}
+dispatch.latest_time = ${latest_time}
+display.general.timeRangePicker.show = 0
+display.general.type = statistics
+display.page.search.tab = statistics
+enableSched = 1
+realtime_schedule = 0
+request.ui_dispatch_view = search
+search = \\"
+    echo "[${searchname}]" >> "${savedsearches}"
+    echo "${searchAttributes}" >> "${savedsearches}"
+    tr -cd '\040-\176,\012' < "${splfile}"  | sed '$ ! s/$/ \\/' >> "${savedsearches}"
+    echo "" >> "${savedsearches}"
+}
+
+
+#DOC: splunkAddUserFromCSV
+#DOC:   NAME
+#DOC:     splunkAddUserFromCSV - Add users to Splunk from a CSV file
+#DOC:   SYNOPSIS
+#DOC:     splunkAddUserFromCSV csv_file [username] [password]
+#DOC:   DESCRIPTION
+#DOC:     This function adds users to Splunk from a CSV file. The CSV file should have the format username,password,role,email,full-name,force-change-pass.
+#DOC:     The csv_file argument is mandatory and must be a readable file. The username, and password arguments are optional. If not provided, the function will prompt for them.
+#DOC:     The function handles spaces in the full name field correctly and ensures that the password is enclosed in single quotes.
+#DOC:     The function is compatible across different shell interpreters.
+#DOC:   EXAMPLE CSV CONTENT
+#DOC:     username,password,role,email,full-name,force-change-pass
+#DOC:     lightning.mcqueen,F@st4sJaguarStr0ngAsBear,admin,lightning.mcqueen@acme.com,"Lightning McQueen",true
+#DOC:     hudson.hornet,F@bul0usHuds0nHornet,user,hudson.hornet@acme.com,"Hudson Hornet",false
+#DOC:   SECURITY ADVICE
+#DOC:     For security reasons, it's recommended not to provide the username and password as arguments unless you're using this function in a script. Providing them as arguments could expose them in the command history.
+#DOC: 
+splunkAddUserFromCSV() {
+
+  # Check if csv_file argument is provided
+  if [ -z "$1" ]
+  then
+    echo "Error: No CSV file provided. Please provide a CSV file as the first argument." >&2
+    return 1
+  fi
+
+  # Check if csv_file is a file
+  if [ ! -f "$1" ]
+  then
+    echo "Error: The provided CSV file does not exist. Please provide a valid CSV file." >&2
+    return 2
+  fi
+
+  # Check if csv_file is readable
+  if [ ! -r "$1" ]
+  then
+    echo "Error: The provided CSV file is not readable. Please check the file permissions." >&2
+    return 3
+  fi
+
+  # Get the CSV file name from the function argument
+  local csv_file=$1
+  local SGUSERNAME
+  local SGPASSWORD
+
+  if [ -z $2 ]
+  then
+    printf "Please enter Splunk GUI Username: "
+    read SGUSERNAME
+  else
+    SGUSERNAME=$2
+  fi
+
+  if [ -z $3 ]
+  then
+    stty -echo
+    printf "Please enter Splunk GUI Password: "
+    read SGPASSWORD
+    stty echo
+    printf "\n"
+  else
+    SGPASSWORD=$3
+  fi
+
+  # Save the current IFS
+  oldIFS=$IFS
+  # Set the IFS to newline
+  IFS=$'\n'
+
+  # Using sed remove leading and trailing spaces and windows end of the lines
+  # And tr -cd '\040-\176,\012' to remove possible non-printable characters which might be leftover from excel (or what ever)
+  for line in $(cat $csv_file | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' |sed 's/\r//' | tr -cd '\040-\176,\012'|grep -v 'username,password,role,email,full-name,force-change-pass') 
+  do
+    username=$(echo $line | cut -d, -f1|sed 's/^[ \t]*//' | sed 's/[ \t]*$//')
+    password=$(echo $line | cut -d, -f2 |sed 's/^[ \t]*//' | sed 's/[ \t]*$//')
+    role=$(echo $line | cut -d, -f3)
+    email=$(echo $line | cut -d, -f4)
+    full_name=$(echo $line | cut -d, -f5)
+    force_change_pass=$(echo $line | cut -d, -f6 | tr '[A-Z]' '[a-z]')
+
+    # If force change password is not false, set it to true
+    if [ "$force_change_pass" != "false" ]; then
+      force_change_pass="true"
+    fi
+
+    echo "Adding user=$username , role=$role , password=$password , email=$email , full-name=$full_name , force-change-pass=$force_change_pass"
+    $SPLUNK_HOME/bin/splunk add user $username -role $role -password "$password" -email "$email" -full-name "$full_name" -force-change-pass $force_change_pass -auth $SGUSERNAME:$SGPASSWORD
+  done
+
+  # Restore the original IFS
+  IFS=$oldIFS
+}
+
+#DOC: syncLookup
+#DOC:   NAME
+#DOC:     syncLookup - synchronize a Splunk lookup
+#DOC:   SYNOPSIS
+#DOC:     syncLookup [lookupname] [username] [password]
+#DOC:   DESCRIPTION
+#DOC:     This function synchronizes a Splunk lookup.
+#DOC:     The lookupname, username, and password arguments are optional.
+#DOC:     If not provided, the function will prompt for them.
+#DOC: 
+syncLookup() {
+  local lookup_name
+  local lookup_file
+  local SGUSERNAME
+  local SGPASSWORD
+  if [ -z $1 ]
+  then
+    printf "Please provide lookup name: "
+    read lookup_file
+  else
+    lookup_file=$1
+  fi
+
+  # Check if the file exists, is a file and is readable
+  if [ ! -e "$lookup_file" ]; then
+    echo "ERROR: File $lookup_file does not exist." >&2
+    return 1
+  elif [ ! -f "$lookup_file" ]; then
+    echo "ERROR: $lookup_file is not a file." >&2
+    return 1
+  elif [ ! -r "$lookup_file" ]; then
+    echo "ERROR: File $lookup_file is not readable." >&2
+    return 1
+  fi
+
+  if [ -z $2 ]
+  then
+    printf "Please enter Splunk GUI Username: "
+    read SGUSERNAME
+  else
+    SGUSERNAME=$2
+  fi
+
+  if [ -z $3 ]
+  then
+    stty -echo
+    printf "Please enter Splunk GUI Password: "
+    read SGPASSWORD
+    stty echo
+    printf "\n"
+  else
+    SGPASSWORD=$3
+  fi
+
+  lookup_header=$(head -n 1 $lookup_file|sed 's/\r$//'|tr ',' ' ')
+  lookup_name=$(echo $lookup_file | rev | cut -d'/' -f1 | rev)
+  splunk_command="|inputlookup $lookup_name|table $lookup_header|outputlookup $lookup_name"
+  
+  # Capture stderr of the command
+  command_output=$($SPLUNK_HOME/bin/splunk search "$splunk_command" -auth $SGUSERNAME:$SGPASSWORD 2>&1 >/dev/null)
+  RETURN_CODE=$(echo $?)
+  if [ $RETURN_CODE -ne 0 ]
+  then
+    echo "ERROR: lookup sync failed, splunk return code $RETURN_CODE, run again manually" >&2
+    echo "$SPLUNK_HOME/bin/splunk search \"$splunk_command\"" >&2
+    # Print the stderr of the command
+    echo "Command output: $command_output" >&2
+  fi  
+}
+
+#DOC: removeSPLComments
+#DOC:   NAME
+#DOC:     removeSPLComments - removes inline comments from SPL code
+#DOC:   SYNOPSIS
+#DOC:     removeSPLComments splfile
+#DOC:   DESCRIPTION
+#DOC:     removeSPLComments removes inline comments from SPL code ``` comment ```
+#DOC: 
+removeSPLComments() {
+    # Check if an argument was provided or data is coming from stdin
+    if [ -z "$1" ] && [ -t 0 ]; then
+        echo "Please provide a file as an argument or pipe data into this function." >&2
+        echo "Usage: removeSPLComments splfile" >&2
+        return 2
+    fi
+
+    # Check if the provided argument is a readable file
+    if [ -n "$1" ] && [ ! -f "$1" ]; then
+        echo "The provided argument is not a file or the file does not exist." >&2
+        echo "Usage: removeSPLComments splfile" >&2
+        return 3
+    elif [ -n "$1" ] && [ ! -r "$1" ]; then
+        echo "The provided file is not readable." >&2
+        echo "Usage: removeSPLComments splfile" >&2
+        return 4
+    fi
+
+    local inside=0
+    local line
+    while IFS= read -r line; do
+        while true; do
+            if [ $inside -eq 0 ]; then
+                if echo "$line" | grep -q '```'; then
+                    printf "%s" "$(echo "$line" | sed 's/```.*//')"
+                    line="$(echo "$line" | sed 's/.*```//')"
+                    inside=1
+                else
+                    printf "%s\n" "$line"
+                    break
+                fi
+            else
+                if echo "$line" | grep -q '```'; then
+                    line="$(echo "$line" | sed 's/.*```//')"
+                    inside=0
+                else
+                    break
+                fi
+            fi
+        done 
+    done < "${1:-/dev/stdin}"
+}
+
+
+#DOC: printSPLComments
+#DOC:   NAME
+#DOC:     printSPLComments - prints inline comments from SPL code
+#DOC:   SYNOPSIS
+#DOC:     printSPLComments splfile
+#DOC:   DESCRIPTION
+#DOC:     printSPLComments prints inline comments from SPL code ``` comment ```
+#DOC: 
+printSPLComments() {
+    # Check if an argument was provided or data is coming from stdin
+    if [ -z "$1" ] && [ -t 0 ]; then
+        echo "Please provide a file as an argument or pipe data into this function." >&2
+        echo "Usage: printSPLComments splfile" >&2
+        return 2
+    fi
+
+    # Check if the provided argument is a readable file
+    if [ -n "$1" ] && [ ! -f "$1" ]; then
+        echo "The provided argument is not a file or the file does not exist." >&2
+        echo "Usage: printSPLComments splfile" >&2
+        return 3
+    elif [ -n "$1" ] && [ ! -r "$1" ]; then
+        echo "The provided file is not readable." >&2
+        echo "Usage: printSPLComments splfile" >&2
+        return 4
+    fi
+
+    # Create a temporary file and replace ``` with \n```\n in the input file/stdin, then read from the tempfile
+    tempfile=$(mktemp)
+    sed 's/```/\n```\n/g' "${1:-/dev/stdin}" > "$tempfile"
+
+    local inside=0
+    local line
+    while IFS= read -r line; do
+        if echo "$line" | grep -q '```'; then
+            inside=$(expr 1 - $inside)
+        elif [ $inside -eq 1 ]; then
+            printf "%s\n" "$line"
+        fi
+    done < "$tempfile"
+
+    # Clean up the temporary file after use.
+    rm "$tempfile"
+}
+
+#DOC: splunkGenerateMetadata
+#DOC:   NAME
+#DOC:     splunkGenerateMetadata - generate metadata for Splunk
+#DOC:   SYNOPSIS
+#DOC:     splunkGenerateMetadata -t [fieldExtractions|savedsearches|lookups|macros] FILE
+#DOC:   DESCRIPTION
+#DOC:     This function generates metadata for Splunk.
+#DOC:     The -t option specifies the type of metadata to generate, and can be one of fieldExtractions, savedsearches, lookups, or macros.
+#DOC:     The FILE argument specifies the file to process.
+#DOC: 
+splunkGenerateMetadata() {
+    local valid_types=" fieldExtractions savedsearches lookups macros "
+    local TYPE
+    local FILE
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -t)
+                TYPE="$2"
+                if ! echo "$valid_types" | grep -q " $TYPE "; then
+                    echo "Invalid type: $TYPE"
+                    echo "Usage: splunkGenerateMetadata -t [$(echo $valid_types | sed 's/ /|/g')] FILE"
+                    return 1
+                fi
+                shift 2
+                ;;
+            *)
+                FILE="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$TYPE" ] || [ -z "$FILE" ]; then
+        echo "Both type and file are required"
+        echo "Usage: splunkGenerateMetadata -t [$(echo $valid_types | sed 's/ /|/g')] FILE"
+        return 1
+    fi
+
+    case $TYPE in
+        fieldExtractions)
+            input_data=$(cat "$FILE" | tr -d '\r' | grep -Eo "^\[.*\]$|^EXTRACT-.*")
+            for token in $input_data; do
+                case "$token" in
+                    \[*\])
+                        sourcetype=$(echo "$token" | tr -d '[]')
+                        ;;
+                    EXTRACT-*)
+                        echo "[props/$sourcetype/$token]"
+                        echo "access = read : [ * ], write : [ admin ]"
+                        echo "export = system"
+                        echo "owner = nobody"
+                        echo ""
+                        ;;
+                esac
+            done
+            ;;
+        savedsearches)
+            for savesearch in $(cat "$FILE" | tr -d '\r' | grep -Eo "^\[.*\]$" | tr -d '[]'); do
+                echo "[savedsearches/$savesearch]"
+                echo "access = read : [ * ], write : [ admin ]"
+                echo "export = system"
+                echo "owner = nobody"
+                echo ""
+            done
+            ;;
+        lookups)
+            local lookupName=$(echo $FILE | rev| cut -d'/' -f1|rev)
+            echo "[lookups/$lookupName]"
+            echo "access = read : [ * ], write : [ admin ]"
+            echo "export = system"
+            echo "owner = nobody"
+            echo ""
+            echo "[transforms/$lookupName]"
+            echo "access = read : [ * ], write : [ admin ]"
+            echo "export = system"
+            echo "owner = nobody"
+            echo ""
+            ;;
+        macros)
+            for macro in $(cat "$FILE" | tr -d '\r' | grep -Eo "^\[.*\]$" | tr -d '[]'); do
+                echo "[macros/$macro]"
+                echo "access = read : [ * ], write : [ admin ]"
+                echo "export = system"
+                echo "owner = nobody"
+                echo ""
+            done
+            ;;
+        *)
+            echo "Invalid type: $TYPE" >&2
+            return 1
+            ;;
+    esac
+
+    # further processing of FILE here
+}
+
+#DOC: splunkMergeConfig
+#DOC:   NAME
+#DOC:     splunkMergeConfig - merge Splunk configuration files
+#DOC:   SYNOPSIS
+#DOC:     splunkMergeConfig PATH_TO_LOCAL_CONFIG
+#DOC:   DESCRIPTION
+#DOC:     This function merges the local and default configuration files for a given Splunk app.
+#DOC:     It uses the Splunk 'btool' command to list the effective configuration that results from merging the local and default configuration files.
+#DOC:     The PATH_TO_LOCAL_CONFIG argument specifies the path to the local configuration file to process.
+#DOC:     The function checks if the input path matches the pattern /local/.*\.conf$, extracts the app name and config file name from the input path, and runs the 'btool' command with these extracted values.
+#DOC:     It then uses 'sed' to remove the local and default file paths from the beginning of each line in the 'btool' output.
+#DOC:
+
+splunkMergeConfig() {
+    # Store the input path in a variable for easier reference
+    local input_path=$1
+
+    # Check if the input path matches the pattern /local/.*\.conf$
+    echo $input_path | grep -q "/local/.*\.conf$"
+    if [ $? -eq 0 ]; then
+        # Reverse the input path, cut the third field (which is the reversed app name), then reverse it back to get the app name
+        local app_name=$(echo $input_path | rev | cut -d'/' -f3 | rev)
+        # Extract the config file name from the input path
+        local config_file=$(basename $input_path |sed 's/\.conf$//')
+
+        # Create a variable for the default input path using sed for string replacement
+        local input_path_default=$(echo $input_path | sed 's|/local/|/default/|')
+
+        # Run the btool command with the extracted app name and config file name
+        # Use sed to remove the file paths from the beginning of each line
+        splunk btool $config_file list --debug --app=$app_name | sed "s|^$input_path[ ]\+||" | sed "s|^$input_path_default[ ]\+||"
+    else
+        echo "Error: The input path does not match the expected pattern /local/.*\.conf$"
+    fi
+}
+
+
+#########################################################
+#                                                       #
+#        MAIN PROGRAM                                   #
+#                                                       #
+#########################################################
+
+
+splunkAnalyze() {
+  splunk_home=$(getSplunkHome)
+  splunk_datastore=$(getSplunkDatastore)
+  splunk_role=$(getSplunkRole)
+  splunk_role_name=$(getSplunkRoleName $splunk_role)
+  splunk_version=$(getSplunkVersion)
+  splunk_user="THIS NEEDS TO BE EDIT REDONE getUser is using config in which user shall not be."
+
+  echo "STATUS"
+  echo "======"
+  #Verify the splunk service is running
+  echo 'Splunk status:'
+  systemctl status splunk
+  echo ''
+  $splunk/bin/splunk status
+
+  #And listening at port 8089
+  echo 'Check if splunk listes at 8089'
+  netstat -tpln | grep 8089
+  echo ''
+
+  #Verify the splunk universal forwrader is running
+  echo 'Splunk Universal Forwarder status'
+  systemctl status splunkforwarder
+  echo ''
+  /opt/splunkforwarder/bin/splunk status
+
+  #and listening at right point
+  echo 'Check if splunk universal forwarder listes at 8090'
+  netstat -tpln | grep 8090
+  echo ''
+
+  #check the splunk processes are running under splunk user
+  echo 'Check if splunk processes runs under splunk user:'
+  ps axu | grep splunk
+  echo ''
+
+  #FIREWALL RULES
+  echo 'FIREWALLS:'
+
+  #iptables
+  echo 'iptables status:'
+  checkIptablesStatus
+  if [ ! -z $(echo $iptablesStatus |grep 'enabled') ]
+  then
+    iptables -L -n
+  fi
+   echo ''
+
+  #firewalld
+  echo 'firewalld status:'
+  checkFirewalldStatus
+  if [ ! -z $(echo $firewalldStatus |grep 'enabled') ]
+  then
+    firewall-cmd --list-all
+  fi
+
+  echo ''
+  echo "CHECKS"
+  echo "======"
+
+  #check $SPLUNK_HOME is set
+  echo '$SPLUNK_HOME:'
+  checkSPLUNK_HOME $splunk_home
+  echo ''
+
+  checkOwnership $splunk_home $splunk_user
+  checkOwnership $splunk_datastore $splunk_user
+  checkCSVNonASCIIChars 
+}  
+
+
+
+#VERSION HISTORY
+#Version,Comments
+#20210404,ADDED: getSplunkDatastore; getSplunkPID; getSplunkHome; getSplunkUser; checkOwnership; MODIFIED: checkSPLUNK_HOME; getSplunkVersion
+#20210428,ADDED: -x argument and help fo the same, checkCSVNonASCIIChars
+#20210430,ADDED: getSplunkRoleName
+#20210506,BUGCORRECTION: getSplunkRoleName
+#20210524,ADDED: checkCSVsBigger1000k
+#20220202,CORRECTED: getSplunkHome()
+#20220206,CORRECTED: all functions now can be loaded and run as standalone "programs"; ADDED: getAppsVersion, getAppsVersionXML 
+#20220207,ADDED: checkConfigsChangedLessThenNDaysAgo, checkConfigsChangedLessThenNHoursAgo, checkCSVsChangedLessThenNDaysAgo, checkCSVsChangedLessThenNHoursAgo
+#20220213,ADDED: searchBlackouts
+#20220305,UPDATED: getAppsVersion and getAppsVersionXML with cleaner, more readable output
+#20221115,ADDED: getUFHome
+#20230102,CORRECTED: getSplunkHome was returning "/opt/splunk /opt/splunk" instead of "/opt/splunk"
+#20230417,ADDED: removeSPLComments function to remove SPL inline comments like this ``` comment ```
+#20230418,CORRECTED: removeSPLComments function was removing last line even if it wasn't comment
+#20230420,ADDED: Addition DOC Comments to support help system
+#20230502,REMOVED: checkOwnership, moved to adminFunction library
+#20230526,ADDED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230531,UPDATED: furhter updates of DOC Comments
+#20230606,UPDATED: added SEE ALSO to docs where it's relevant
+#20230621,CHANGED: getUFHome optimization 
+#20230622,ADDED: getSplunkFunctionsVersion - Print splunkFunctions version 
+#20230627,ADDED: splunkListCSVLookups
+#20230709,ADDED: splunkListAppCustomizations, CHANGED: getSplunkAppsVersion to splunkListAppsVersion
+#20230721,ADDED: setSplunkRole
+#20230727,UPDATED: splunkAppGetCustomizations add support for all server, added -d to print contend of file and add -d HTML to print in HTML format 
+#20230802,CHNAGED: renamed splunkAppGetCustomizations to splunkListAppCustomizations, ADDED: filter out empty files or files same as it's default version
+#20230803,UPDATED: splunkListAppCustomizations added deployment-apps
+#20230807,ADDED: splunkListDashboardCustomizations
+#20230821,ADDED: splunkAddSearch 
+#20230825,ADDED: splunkAddCSVLookup
+#20230826,ADDED: splunkAddMacros
+#20230912,ADDED: printSPLComments; UPDATED: removeSPLComments, better args check and usage added
+#20231006,CORRECTED: added manager-apps in splunkListAppCustomizations
+#20231120,ADDED: splunkAddUserFromCSV
+#20231130,CORRECTED: syncLookup, several errors and better error out, plus input checks
+#20240403,UPDATED: splunkListCSVLookups with options [--header] [--sdf] [--appsdir directory]
+#20240409,UPDATED: splunkListAppCustomizations -d showing differences
+#20240413,UPDATED: splunkListAppCustomizations -d HTML output is showing differences with color coding
+#20240525,ADDED: splunkMergeConfig 
+#20240526,UPDATED: splunkListAppCustomizations, speed optimization
+#20240606,CORRECTED: splunkListCSVLookups if hearder contains windows end of the line (CR) then output was malformed

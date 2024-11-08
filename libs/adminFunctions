@@ -1,0 +1,617 @@
+#! /bin/sh
+
+#This Library below contains its own documentation just do:
+#grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
+
+adminFuncVersion="20230622"
+
+#DOC: LIBRARY NAME: adminFunctions
+#DOC: DESCRIPTION: Library of usefull functions for admins  
+#DOC: 
+
+#DOC: getAdminFunctionsVersion 
+#DOC:   NAME 
+#DOC:     getAdminFunctionsVersion - Print textEditAliases version 
+#DOC:   SYNOPSIS 
+#DOC:     getAdminFunctionsVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print adminFunctions version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getAdminFunctionsVersion() {
+  echo $adminFuncVersion
+  return 0
+}
+
+#DOC: backupFile FILE
+#DOC:   NAME
+#DOC:     backupFile - create a backup of a file
+#DOC:   SYNOPSIS
+#DOC:     backupFile FILE
+#DOC:   DESCRIPTION
+#DOC:     The backupFile function takes one argument, FILE, which is the path to the file to be backed up. 
+#DOC:     It generates a timestamp using the `date` command and appends it to the filename to create a unique backup filename. 
+#DOC:     Then, it uses the `cp` command to copy the original file to the backup file.
+#DOC:   EXAMPLES
+#DOC:     backupFile /path/to/myfile.txt
+#DOC:     This will create a backup of /path/to/myfile.txt with a filename like /path/to/myfile.txt_20220101_120000 
+#DOC:     (assuming the current date and time is January 1st, 2022 at 12:00:00).
+#DOC: 
+backupFile() {
+  local file2backup=$1
+  local backupfile
+  local timestamp=$(date +%Y%m%d_%H%M%S)
+  backupfile="${file2backup}_${timestamp}"
+  cp $file2backup $backupfile
+}
+
+#DOC: backupFolder [-t|--tarball] FOLDER
+#DOC:   NAME
+#DOC:     backupFolder - create a backup of a folder
+#DOC:   SYNOPSIS
+#DOC:     backupFolder [-t|--tarball] FOLDER
+#DOC:   DESCRIPTION
+#DOC:     The backupFolder function takes one required argument, FOLDER, which is the path to the folder to be backed up.
+#DOC:     It generates a timestamp using the `date` command and appends it to the folder name to create a unique backup filename.
+#DOC:     Then, it either uses the `tar czf` command to create a tarball of the folder or the `cp -R` command to copy the folder to the backup location, depending on whether the `-t` or `--tarball` switch was provided.
+#DOC:   OPTIONS
+#DOC:     -t, --tarball
+#DOC:         Optional switch to control whether a tarball is created or the folder is copied using `cp -R`.
+#DOC:   EXAMPLES
+#DOC:     backupFolder /path/to/myfolder
+#DOC:     This will create a backup of /path/to/myfolder with a filename like myfolder_20220101_120000 (assuming the current date and time is January 1st, 2022 at 12:00:00) in the current directory.
+#DOC: 
+backupFolder() {
+    local tarball=false
+    while [ "$1" != "" ]; do
+        case $1 in
+            -t | --tarball ) tarball=true ;;
+            * ) break ;;
+        esac
+        shift
+    done
+
+    local FolderToBackup=$1
+    local BackupFileName
+    if [ "$tarball" = true ]; then
+        BackupFileName="$(basename $FolderToBackup)_$(date +%Y%m%d_%H%M%S).tar.gz"
+    else
+        BackupFileName="$(basename $FolderToBackup)_$(date +%Y%m%d_%H%M%S)"
+    fi
+
+    if [ -z $1 ]
+    then
+        echo "Missing Argument: Please provide the folder to backup as the first argument."
+        echo "Usage: backup_folder [-t|--tarball] FOLDER_TO_BACKUP"
+        return 1
+    fi
+
+    if [ ! -e $FolderToBackup ]
+    then
+        echo "Error: The folder $FolderToBackup doesn't exist."
+        echo "Usage: backup_folder [-t|--tarball] FOLDER_TO_BACKUP"
+        return 1
+    fi
+
+    if [ "$tarball" = true ]; then
+        tar czf $BackupFileName -C $(dirname $FolderToBackup) $(basename $FolderToBackup)
+    else
+        cp -R $FolderToBackup $BackupFileName
+    fi
+
+    echo "$BackupFileName"
+}
+
+#DOC: checkSumFolder DIR [OUTPUT_FILE]
+#DOC:   NAME
+#DOC:     checkSumFolder - generate md5 hashes for files in a directory
+#DOC:   SYNOPSIS
+#DOC:     checkSumFolder DIR [OUTPUT_FILE]
+#DOC:   DESCRIPTION
+#DOC:     The checkSumFolder function takes one required argument and one optional argument.
+#DOC: 
+#DOC:     DIR: The path to the directory to be processed.
+#DOC:     OUTPUT_FILE: (optional) The name of the output file. 
+#DOC: 
+#DOC:     If provided, the results will be written to the specified file instead of being printed to standard output.
+#DOC:     The function uses the `find` command to recursively search for files in the specified directory and then uses `md5sum` to generate a hash for each file. 
+#DOC:     The results are printed in CSV format with the first column containing the file path and the second column containing the file hash.
+#DOC: 
+#DOC:   EXAMPLES
+#DOC:     checkSumFolder /path/to/mydir
+#DOC:     This will print a CSV of all files in /path/to/mydir and their respective md5 hashes.
+#DOC: 
+#DOC:     checkSumFolder /path/to/mydir /path/to/output.csv
+#DOC:     This will write a CSV of all files in /path/to/mydir and their respective md5 hashes to /path/to/output.csv.
+#DOC: 
+#DOC:   
+#DOC: 
+checkSumFolder() {
+  if [ -z "$1" ]; then
+    echo "Error: This function requires a directory as its first argument."
+    echo "Usage: checkSumFolder DIRECTORY [OUTPUT_FILE]"
+    return 1
+  fi
+
+  local dir="$1"
+  local outputFile="$2"
+
+  if [ ! -e "$dir" ]; then
+    echo "Error: The specified directory '$dir' does not exist."
+    echo "Usage: checkSumFolder DIRECTORY [OUTPUT_FILE]"
+    return 1
+  fi
+
+  if [ ! -d "$dir" ]; then
+    echo "Error: The specified path '$dir' is not a directory."
+    echo "Usage: checkSumFolder DIRECTORY [OUTPUT_FILE]"
+    return 1
+  fi
+
+  if [ ! -r "$dir" ]; then
+    echo "Error: The specified directory '$dir' is not readable."
+    echo "Usage: checkSumFolder DIRECTORY [OUTPUT_FILE]"
+    return 1
+  fi
+
+  if [ -z "$outputFile" ]; then
+    echo "File,MD5 Hash"
+    for file in $(find "$dir" -type f)
+    do 
+      echo "$file,$(md5sum $file | cut -d' ' -f1)"
+    done
+  else
+    {
+      echo "File,MD5 Hash"
+      for file in $(find "$dir" -type f)
+      do 
+        echo "$file,$(md5sum $file | cut -d' ' -f1)"
+      done
+    } > "$outputFile"
+  fi
+}
+
+#DOC: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] DIR1 DIR2
+#DOC:   NAME
+#DOC:     compareDirs - compare the contents of two directories
+#DOC:   SYNOPSIS
+#DOC:     compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] DIR1 DIR2
+#DOC:   DESCRIPTION
+#DOC:     The compareDirs function takes two arguments, DIR1 and DIR2, which are the paths to the directories to be compared. 
+#DOC:     It uses the `checkSumFolder` function to generate CSVs containing the file paths and hashes for each directory. 
+#DOC:     Then it uses the `comm` command to compare the CSVs and find additional, missing, and modified files. 
+#DOC:     The results are printed to standard output.
+#DOC:   OPTIONS
+#DOC:     -a
+#DOC:         Optional switch to print additional files in DIR1.
+#DOC:     -m
+#DOC:         Optional switch to print missing files in DIR1.
+#DOC:     -c
+#DOC:         Optional switch to print changed files.
+#DOC:     -s
+#DOC:         Optional switch to print same files.
+#DOC:     -r
+#DOC:         Optional switch to generate a CSV report with columns for file, in dir1, in dir2, and changed.
+#DOC:     -UC
+#DOC:         Optional switch to use culture when generating the CSV report. If this option is used, all fields and the header will be enclosed in quotes.
+#DOC:     -h|--help
+#DOC:         Optional switch to print a help message with a description of all available options.
+#DOC:
+#DOC:     If none of these switches are entered, it's the same as if all are entered except for -r.
+#DOC: 
+compareDirs() {
+    # Set initial values for flags
+    local additional=false
+    local missing=false
+    local changed=false
+    local same=false
+    local report=false
+    local useCulture=false
+    local help=false
+
+    # Parse command line arguments
+    while [ "$1" != "" ]; do
+        case $1 in
+            -a ) additional=true ;;
+            -m ) missing=true ;;
+            -c ) changed=true ;;
+            -s ) same=true ;;
+            -r ) report=true ;;
+            -UC ) useCulture=true ;;
+            -h | --help ) help=true ;;
+            * )
+                if [ -z "$dir1" ]; then
+                    local dir1="$1"
+                elif [ -z "$dir2" ]; then
+                    local dir2="$1"
+                else
+                    break
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    if [ "$help" = true ]; then
+        echo "compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] DIR1 DIR2"
+        echo "  The function takes two arguments, which are the paths to the directories to be compared."
+        echo "  It uses the \`checkSumFolder\` function to generate CSVs containing the file paths and hashes"
+        echo "  for each directory. Then it uses the \`comm\` command to compare the CSVs and find additional,"
+        echo "  missing, and modified files. The results are printed to standard output."
+        echo ""
+        echo "  -a: Optional switch to print additional files in DIR1."
+        echo "  -m: Optional switch to print missing files in DIR1."
+        echo "  -c: Optional switch to print changed files."
+        echo "  -s: Optional switch to print same files."
+        echo "  -r: Optional switch to generate a CSV report with columns for file, in dir1, in dir2, and changed."
+        echo "  -UC: Optional switch to use culture when generating the CSV report. If this option is used,"
+        echo "       all fields and the header will be enclosed in quotes."
+        echo "  -h|--help: Optional switch to print this help message."
+        echo ""
+        echo "  If none of these switches are entered, it's the same as if all are entered except for -r."
+        echo ""
+        echo "  DIR1: The path to the first directory to be compared."
+        echo "  DIR2: The path to the second directory to be compared."
+        return 0
+    fi
+
+    # If no flags are set, set all flags to true
+    if ! $additional && ! $missing && ! $changed && ! $same && ! $report; then
+      additional=true
+      missing=true
+      changed=true
+      same=true
+      report=false
+    fi
+
+    # If the report flag is set, set all other flags to false
+    if $report; then
+      additional=false
+      missing=false
+      changed=false
+      same=false
+    fi
+
+    # Check if both directories are entered
+    if [ -z "$dir1" ] || [ -z "$dir2" ]; then
+        echo "Error: Both directories must be entered."
+        echo "Usage: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] dir1 dir2"
+        echo "Use -h or --help to display help."
+        return 1
+    fi
+
+    # Check if both directories are directories and readable
+    if [ ! -d "$dir1" ]; then
+        echo "Error: $dir1 is not a directory."
+        echo "Usage: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] dir1 dir2"
+        echo "Use -h or --help to display help."
+        return 1
+    elif [ ! -r "$dir1" ]; then
+        echo "Error: $dir1 is not readable."
+        echo "Usage: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] dir1 dir2"
+        echo "Use -h or --help to display help."
+        return 1
+    elif [ ! -d "$dir2" ]; then
+        echo "Error: $dir2 is not a directory."
+        echo "Usage: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] dir1 dir2"
+        echo "Use -h or --help to display help."
+        return 1
+    elif [ ! -r "$dir2" ]; then
+        echo "Error: $dir2 is not readable."
+        echo "Usage: compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] dir1 dir2"
+        echo "Use -h or --help to display help."
+        return 1
+    fi
+
+    # Create temporary files to store checksums of directories
+    local csv1=$(mktemp)
+    local csv2=$(mktemp)
+    (cd "$dir1" && checkSumFolder .) > "$csv1"
+    (cd "$dir2" && checkSumFolder .) > "$csv2"
+
+    # Print additional files in dir1 if -a flag is set
+    if [ "$additional" = true ]; then
+        echo "Additional files in $dir1:"
+        comm -23 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
+    fi
+
+    # Print missing files in dir1 if -m flag is set
+    if [ "$missing" = true ]; then
+        echo "Missing files in $dir1:"
+        comm -13 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
+    fi
+
+    # Print changed files if -c flag is set
+    if [ "$changed" = true ]; then
+        echo "Changed files:"
+        while IFS= read -r file; do
+            local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
+            local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
+            if [ "$md5_1" != "$md5_2" ]; then
+                echo "$file"
+            fi
+        done < <(comm -12 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort))
+    fi
+
+    # Print same files if -s flag is set 
+    if [ "$same" = true ]; then 
+        echo "Same files:"
+        while IFS= read -r file; do 
+            local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
+            local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
+            if [ "$md5_1" = "$md5_2" ]; then 
+                echo "$file"
+            fi
+        done < <(comm -12 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort))
+    fi
+
+    # Generate CSV report if -r flag is set
+    if [ "$report" = true ]; then
+      if [ "$useCulture" = true ]; then
+        echo "\"file\",\"in dir1 $dir1\",\"in dir2 $dir1\",\"changed\""
+      else
+        echo "file,in dir1 $dir1,in dir2 $dir1,changed"
+      fi
+      while IFS= read -r file; do
+        local in_dir1=true
+        local in_dir2=true
+        local changed=false
+        local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
+        local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
+        if [ -z "$md5_1" ]; then
+            in_dir1=false
+            md5_1=""
+        fi
+        if [ -z "$md5_2" ]; then
+            in_dir2=false
+            md5_2=""
+        fi
+        if [ "$in_dir1" = true ] && [ "$in_dir2" = true ] && [ "$md5_1" != "$md5_2" ]; then
+            changed=true
+        fi
+        if [ "$useCulture" = true ]; then
+            echo "\"$file\",\"$in_dir1\",\"$in_dir2\",\"$changed\""
+        else
+            echo "$file,$in_dir1,$in_dir2,$changed"
+        fi
+      done < <(sort <(sed '1d' "$csv1" | cut -d',' -f1) <(sed '1d' "$csv2" | cut -d',' -f1) | uniq)
+    fi
+
+    #Clean up
+    rm "$csv1" "$csv2"
+
+}
+
+
+#DOC: natoPhoneticAlphabet TEXT
+#DOC:   NAME
+#DOC:     natoPhoneticAlphabet - convert text to NATO phonetic alphabet code words
+#DOC:   SYNOPSIS
+#DOC:     natoPhoneticAlphabet TEXT
+#DOC:   DESCRIPTION
+#DOC:     The natoPhoneticAlphabet function takes one argument, TEXT, which is the text to be converted to its corresponding NATO phonetic alphabet code words.
+#DOC:     It iterates over each character in the input text and converts it to its corresponding NATO phonetic alphabet code word if it is an alphabetical character. 
+#DOC:     Non-alphabetical characters are left unchanged. The resulting code words are printed to standard output, separated by spaces.
+#DOC:   EXAMPLES
+#DOC:     natoPhoneticAlphabet "Hello World"
+#DOC:     This will output: Hotel Echo Lima Lima Oscar Whiskey Oscar Romeo Lima Delta
+#DOC: 
+natoPhoneticAlphabet() {
+    if [ -z "$1" ]; then
+        echo "Usage: natoPhoneticAlphabet [text]"
+        return 1
+    fi
+
+    input=$(echo $1 |tr [a-z] [A-Z])
+    nato=(Alfa Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliett Kilo Lima Mike November Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey X-ray Yankee Zulu)
+    for (( i=0; i<${#input}; i++ )); do
+        char="${input:$i:1}"
+        if [[ "$char" =~ [a-zA-Z] ]]; then
+            index=$(($(printf '%d' "'$char") - 65))
+            echo -n "${nato[$index]} "
+        else
+            echo -n "$char "
+        fi
+    done
+    echo
+}
+
+#DOC: convertUnit NUMBER CURRENT_UNIT NEW_UNIT
+#DOC:   NAME
+#DOC:     convertUnit - convert a number between units
+#DOC:   SYNOPSIS
+#DOC:     convertUnit NUMBER CURRENT_UNIT NEW_UNIT
+#DOC:   DESCRIPTION
+#DOC:     The convertUnit function takes three arguments:
+#DOC:     NUMBER: The number to be converted.
+#DOC:     CURRENT_UNIT: The unit of the number to be converted.
+#DOC:     NEW_UNIT: The unit to convert the number to.
+#DOC:
+#DOC:     It converts the given number from the current unit to the new unit.
+#DOC:     The units can be one of KB, MB, GB, TB or PB and are case-insensitive.
+#DOC:     If the arguments are invalid or missing, the function prints a short help message.
+#DOC:     The result is formatted with two decimal places of precision.
+#DOC:   EXAMPLES
+#DOC:     convertUnit 1024 KB MB
+#DOC:     This will convert 1024 KB to MB and output 1.00.
+#DOC: 
+convertUnit() {
+    if [ $# -ne 3 ]; then
+        echo "Usage: convertUnit NUMBER CURRENT_UNIT NEW_UNIT"
+        return
+    fi
+
+    local number=$1
+    local current_unit=$(echo $2 | tr '[a-z]' '[A-Z]')
+    local new_unit=$(echo $3 | tr '[a-z]' '[A-Z]')
+
+    if ! echo "$number" | grep -E '^[0-9]+([.][0-9]+)?$' > /dev/null; then
+        echo "Error: NUMBER must be a valid number"
+        return
+    fi
+
+    local units=("KB" "MB" "GB" "TB" "PB")
+    local current_unit_index=$(printf '%s\n' "${units[@]}" | grep -n -m 1 "^$current_unit$" | cut -d: -f1)
+    local new_unit_index=$(printf '%s\n' "${units[@]}" | grep -n -m 1 "^$new_unit$" | cut -d: -f1)
+
+    if [ -z "$current_unit_index" ] || [ -z "$new_unit_index" ]; then
+        echo "Error: CURRENT_UNIT and NEW_UNIT must be one of KB, MB, GB, TB, PB"
+        return
+    fi
+
+    local difference=$(expr $new_unit_index - $current_unit_index)
+    local result=$(expr $number \* 100)
+
+    if [ $difference -lt 0 ]; then
+        for i in $(seq 1 $(expr 0 - $difference)); do
+            result=$(expr $result \* 1024)
+        done
+    elif [ $difference -gt 0 ]; then
+        for i in $(seq 1 $difference); do
+            result=$(expr $result / 1024)
+        done
+    fi
+
+    printf "%d.%02d\n" $(expr $result / 100) $(expr $result % 100)
+}
+
+#DOC: getPartitionUsage
+#DOC:   NAME
+#DOC:     getPartitionUsage - get the usage of a partition in percentage
+#DOC:   SYNOPSIS
+#DOC:     getPartitionUsage MOUNTPOINT
+#DOC:   DESCRIPTION
+#DOC:     The getPartitionUsage function takes one argument, MOUNTPOINT, which is the mount point of the partition to check.
+#DOC:     It calculates the usage of the partition in percentage and prints it to standard output.
+#DOC: 
+getPartitionUsage() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: getPartitionUsage mountpoint" >&2
+        return 1
+    fi
+
+    if ! df -k "$1" >/dev/null 2>&1; then
+        echo "Partition $1 does not exist" >&2
+        return 1
+    fi
+
+    local partition_size=$(df -k "$1" | sed -n '2p' | sed 's/[ \t]\+/ /g' | cut -d ' ' -f 2)
+    local partition_used=$(df -k "$1" | sed -n '2p' | sed 's/[ \t]\+/ /g' | cut -d ' ' -f 3)
+    local partition_utilization=$(expr $partition_used \* 100 / $partition_size)
+
+    printf "%d.%02d\n" $(expr $partition_utilization / 100) $(expr $partition_utilization % 100)
+
+    return 0
+}
+
+#DOC: getCPUCount
+#DOC:   NAME
+#DOC:     getCPUCount - get the number of processors
+#DOC:   SYNOPSIS
+#DOC:     getCPUCount
+#DOC:   DESCRIPTION
+#DOC:     The getCPUCount function returns the number of processors on the system by counting the number of 'processor' entries in /proc/cpuinfo.
+#DOC: 
+alias getCPUCount="cat /proc/cpuinfo | grep 'processor'|wc -l"
+
+#DOC: getCPUSpeed
+#DOC:   Get the CPU speed in MHz
+#DOC: 
+alias getCPUSpeed="cat /proc/cpuinfo | grep 'cpu MHz'|tail -1|sed 's/[ \t]\+/ /g'| cut -d' ' -f4"
+
+#DOC: getMemoryTotal
+#DOC:   NAME
+#DOC:     getCPUSpeed - get the CPU speed in MHz
+#DOC:   SYNOPSIS
+#DOC:     getCPUSpeed
+#DOC:   DESCRIPTION
+#DOC:     The getCPUSpeed function returns the CPU speed in MHz by reading the 'cpu MHz' entry from /proc/cpuinfo.
+#DOC: 
+alias getMemoryTotal="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'| cut -d' ' -f2"
+
+#DOC: getMemoryUnit
+#DOC:   NAME
+#DOC:     getMemoryUnit - get the unit of memory
+#DOC:   SYNOPSIS
+#DOC:     getMemoryUnit
+#DOC:   DESCRIPTION
+#DOC:     The getMemoryUnit function returns the unit of memory by reading the 'MemTotal' entry from /proc/meminfo.
+#DOC: 
+alias getMemoryUnit="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'| cut -d' ' -f3"
+
+#DOC: untarAll
+#DOC:   NAME
+#DOC:     untarAll - extract all tar.gz and tgz files in the current directory
+#DOC:   SYNOPSIS
+#DOC:     untarAll
+#DOC:   DESCRIPTION
+#DOC:     The untarAll function extracts all tar.gz and tgz files in the current directory. It does this by iterating over all files with the extensions .tar.gz and .tgz, and running the tar command with the xzf options to extract the contents of each file.
+#DOC: 
+untarAll() {
+  for tarball in $(ls *.tar.gz 2> /dev/null; ls *.tgz 2> /dev/null)
+  do 
+    echo untaring $tarball ... 
+    tar xzf $tarball
+  done
+}
+
+#DOC: getPartitionSize
+#DOC:   NAME
+#DOC:     getPartitionSize - get the size of a partition in kilobytes
+#DOC:   SYNOPSIS
+#DOC:     getPartitionSize MOUNTPOINT
+#DOC:   DESCRIPTION
+#DOC:     The getPartitionSize function takes one argument, MOUNTPOINT, which is the mount point of the partition to check.
+#DOC:     It returns the size of the partition in kilobytes by reading the output of the `df -k` command.
+#DOC: 
+getPartitionSize() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: getPartitionSize mountpoint" >&2
+        return 1
+    fi
+
+    if ! df -k "$1" >/dev/null 2>&1; then
+        echo "Partition $1 does not exist" >&2
+        return 1
+    fi
+
+    df -k "$1" | sed -n '2p' | sed 's/[ \t]\+/ /g' | cut -d ' ' -f 2
+
+    return 0
+}
+
+#DOC: checkFolderOwnership
+#DOC:   NAME
+#DOC:     checkFolderOwnership - check if all files under a given folder belong to a given user
+#DOC:   SYNOPSIS
+#DOC:     checkFolderOwnership FOLDER USER
+#DOC:   DESCRIPTION
+#DOC:     The checkFolderOwnership function takes two arguments, FOLDER and USER.
+#DOC:     It checks if all files under the given folder belong to the given user.
+#DOC:     If there are files that do not belong to the specified user, it prints an error message and lists the files that do not belong to the user.
+#DOC:     It also suggests a command to correct the ownership of the files.
+#DOC: 
+checkFolderOwnership() {
+  local folder=$1
+  local user=$2
+  local return_value = $(find $folder ! -user $user | wc -l)
+  if [ $return_value -ne 0 ]
+  then
+    echo "ERROR: there are files in $folder which not belong to $user"
+    find $folder ! -user $user
+    echo "Correction: chown -R $user:$user $folder"
+  fi
+  return $return_value
+}
+
+#VERSION HISTORY:
+#20230418,INIT Version
+#20230420,ADDED: Addition DOC Comments to support help system
+#20230421,ADDED: natoPhoneticAlphabet
+#20230422,ADDED: in function compareDirs -r to print out csv report
+#20230424,ADDED: in function compareDirs -UC use culture (enclose fields in qutation) when printing cs report and -h to
+#20230427,ADDED: new function convertUnit, new aliases: getMemoryUnit, getMemoryTotal, getCPUSpeed, getCPUCount; UDPATE: compareDirs print directory namse in report header
+#20230502,ADDED: checkFolderOwnership to check if all files under gevin foder belongs to given user
+#20230529,CORRECTED: bug in natoPhoneticAlphabet, it was not working for lower letters
+#20230531,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230621,ADDED: untarAll alias
+#20230622,ADDED: getAdminFunctionsVersion - Print textEditAliases version 

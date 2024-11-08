@@ -1,0 +1,141 @@
+profileVersion='20230626'
+
+profileHelpLF() {
+    local libraryFunctions libraryFile
+    if [ "$1" != "" ]; then
+        libraryFunctions="$1"
+        libraryFile=$(grep -h "^\. .*${libraryFunctions}$" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+        if [ "$libraryFile" != "" ]; then
+            libraryFile="${libraryFile/#\~/$HOME}"
+            grep "#DOC:   NAME" $libraryFile -A 1 | grep -v "#DOC:   NAME" | grep -v "^--"| sed 's/#DOC:[ \t]*//'
+        else
+            echo "Error: Library '$libraryFunctions' not found. You can list available libraries using the '-ll' or '--listLibraries' option."
+        fi
+    else
+        while read -r libraryFile; do
+            libraryFile="${libraryFile/#\~/$HOME}"
+            grep "#DOC:   NAME" $libraryFile -A 1 | grep -v "#DOC:   NAME" | grep -v "^--" | sed 's/#DOC:[ \t]*//'
+        done < <(grep -h "^\. ~" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+    fi
+}
+
+profileHelpFH() {
+    local functionName=$1
+    local libfile=$(grep -rl "#DOC: $functionName[ $]\?" ~/libs)
+    if [ -z "$libfile" ]; then
+        echo "Error: Function '$functionName' not found. You can list available functions using the '-lf' or '--listFunctions' option."
+        return
+    fi
+    local inDoc=0
+    while read -r line; do
+        case $line in
+            "#DOC: $functionName"|"#DOC: $functionName "*)
+                inDoc=1
+                echo "$line" | sed 's/#DOC: //'
+                ;;
+            *)
+                if [ $inDoc -eq 1 ]; then
+                    case $line in
+                        *$functionName\(\)*|*"alias $functionName="*)
+                            break
+                            ;;
+                        *)
+                            echo "$line" | sed 's/#DOC:[ ]\?//' #it seems that case is triming the line so in sed we need to have [ ]\? to cover also "empty DOC comments lines"
+                            ;;
+                    esac
+                fi
+                ;;
+        esac
+    done < "$libfile"
+}
+
+profileHelpLL() {
+    local libraryFile libraryName libraryDescription
+    while read -r libraryFile; do
+        libraryFile="${libraryFile/#\~/$HOME}"
+        libraryName=$(grep -h "^#DOC: LIBRARY NAME:" $libraryFile | sed 's/^#DOC: LIBRARY NAME:[ \t]*//')
+        libraryDescription=$(grep "^#DOC: DESCRIPTION:" $libraryFile | sed 's/^#DOC: DESCRIPTION:[ \t]*//')
+        printf "%s\n  %s\n\n" "$libraryName" "$libraryDescription"
+    done < <(grep -h "^\. ~" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+}
+
+profileHelpLH() {
+    local libraryHelp libraryFile
+    libraryHelp="$1"
+    libraryFile=$(grep -h "^\. ~.*${libraryHelp}$" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+    if [ "$libraryFile" != "" ]; then
+        libraryFile="${libraryFile/#\~/$HOME}"
+        grep "^#DOC: " $libraryFile | sed 's/[ \t]*#DOC://'
+    else
+        echo "Error: Library '$libraryHelp' not found. You can list available libraries using the '-ll' or '--listLibraries' option."
+    fi
+}
+
+profileHelp() {
+    local listLibraries libraryHelp listFunctions functionHelp
+
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: profileHelp [-ll|--listLibraries] [-lh|--libraryHelp LIBRARY] [-lf|--listFunctions [LIBRARY]] [-fh|--functionHelp FUNCTION]"
+        echo
+        echo "Options:"
+        echo "  -ll, --listLibraries    List available libraries"
+        echo "  -lh, --libraryHelp      Show help for the specified library"
+        echo "  -lf, --listFunctions    List functions for the specified library or all libraries if none specified"
+        echo "  -fh, --functionHelp     Show help for the specified function"
+        return 0
+    fi
+
+    while [ "$1" != "" ]; do
+        case $1 in
+            -ll | --listLibraries ) listLibraries=true ;;
+            -lh | --libraryHelp )
+                shift
+                if [ "$1" != "" ]; then
+                    profileHelpLH "$1"
+                else
+                    echo "Error: The '-lh' or '--libraryHelp' option requires a library name argument."
+                    return 1
+                fi
+                ;;
+            -lf | --listFunctions )
+                shift
+                listFunctions=true
+                profileHelpLF "$1"
+                ;;
+            -fh | --functionHelp )
+                shift
+                if [ "$1" != "" ]; then
+                    functionHelp=true
+                    profileHelpFH "$1"
+                else
+                    echo "Error: The '-fh' or '--functionHelp' option requires a function name argument."
+                    return 1
+                fi
+                ;;
+            * ) break ;;
+        esac
+        shift
+    done
+
+    if [ "$listLibraries" = true ]; then profileHelpLL; fi
+}
+
+profileVersion() {
+  echo "Profile Version: $profileVersion"
+}
+
+echo "User profile loading libraries..."
+
+# Loading libraries
+. ~/libs/textEditAliases
+. ~/libs/libip
+. ~/libs/iniedit
+. ~/libs/csvedit
+. ~/libs/snmptrapFunctions
+. ~/libs/snmpMIBFunctions
+. ~/libs/adminFunctions
+. ~/libs/htmlDataMining
+. ~/libs/convertDataLib
+
+echo "User profile loaded"
+echo "For more information, help and documentation run: profileHelp"

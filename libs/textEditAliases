@@ -1,0 +1,286 @@
+#! /bin/sh
+
+#Libararty of aliases to make easier text manipulation
+#This Library below contains its own documentation just do:
+#grep "#DOC: " textEditAliases | sed 's/[ \t]*#DOC://'
+
+#Variables:
+Author='Jiri Kindl'
+TextEditAliasesVersion='20230621'
+
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: textEditAliases
+#DOC: DESCRIPTION: Libararty of aliases to make easier text manipulation.
+#DOC: 
+
+#DOC: getTextEditAliasesVersion 
+#DOC:   NAME 
+#DOC:     getTextEditAliasesVersion - Print textEditAliases version 
+#DOC:   SYNOPSIS 
+#DOC:     getTextEditAliasesVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print textEditAliases version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getTextEditAliasesVersion() {
+  echo $TextEditAliasesVersion
+  return 0
+}
+
+#DOC: winEOL2linEOL 
+#DOC:   NAME 
+#DOC:     winEOL2linEOL - removes CRs (carriage returns) 
+#DOC:   SYNOPSIS 
+#DOC:     winEOL2linEOL 
+#DOC:   DESCRIPTION 
+#DOC:     Removes CRs (carriage returns). 
+#DOC:   EXAMPLES 
+#DOC:     Removing carriage returns from text: 
+#DOC:       echo -e “Hello\r\nWorld” | winEOL2linEOL 
+#DOC:       outputs “Hello\nWorld” 
+#DOC: 
+alias winEOL2linEOL="sed 's/\r//'"
+
+#DOC: removeComments 
+#DOC:   NAME 
+#DOC:     removeComments - remove all lines starting with # (hash) 
+#DOC:   SYNOPSIS 
+#DOC:     removeComments 
+#DOC:   DESCRIPTION 
+#DOC:     Removes all lines starting with # (hash). 
+#DOC:   EXAMPLES 
+#DOC:     Removing comments from text: 
+#DOC:       echo -e “#Comment\nText” | removeComments 
+#DOC:       outputs “Text” 
+#DOC: 
+alias removeComments="sed '/^#/ d'"
+
+#DOC: removeRedundantSpaces 
+#DOC:   NAME 
+#DOC:     removeRedundantSpaces - replace multiple white characters (spaces and tabs) with a single space 
+#DOC:   SYNOPSIS 
+#DOC:     removeRedundantSpaces 
+#DOC:   DESCRIPTION 
+#DOC:     Replaces multiple white characters (spaces and tabs) with a single space. 
+#DOC:   EXAMPLES 
+#DOC:     Removing redundant white spaces from text: 
+#DOC:       echo -e “Text\twith spaces” | removeRedundantSpaces 
+#DOC:       outputs “Text with spaces” 
+#DOC: 
+alias removeRedundantSpaces="sed 's/[ \t]\+/ /g'"
+
+#DOC: removeSpaces 
+#DOC:   NAME 
+#DOC:     removeSpaces - completely removes all white characters (spaces and tabs) 
+#DOC:   SYNOPSIS 
+#DOC:     removeSpaces 
+#DOC:   DESCRIPTION 
+#DOC:     Completely removes all white characters (spaces and tabs). 
+#DOC:   EXAMPLES 
+#DOC:     Removing all white spaces from text: 
+#DOC:       echo -e “Text\twith spaces” | removeSpaces 
+#DOC:       outputs “Textwithspaces” 
+#DOC: 
+alias removeSpaces="sed 's/[ \t]\*//g'"
+
+#DOC: removeLeadingSpaces 
+#DOC:   NAME 
+#DOC:     removeLeadingSpaces - removes white characters at the beginning of the line 
+#DOC:   SYNOPSIS 
+#DOC:     removeLeadingSpaces 
+#DOC:   DESCRIPTION 
+#DOC:     Removes white characters at the beginning of the line. 
+#DOC:   EXAMPLES 
+#DOC:     Removing leading white spaces from text: 
+#DOC:       echo -e " Text with spaces" | removeLeadingSpaces 
+#DOC:       outputs “Text with spaces” 
+#DOC: 
+alias removeLeadingSpaces="sed 's/^[ \t]\*//'"
+
+#DOC: removeTrailingSpaces 
+#DOC:   NAME 
+#DOC:     removeTrailingSpaces - removes white characters at the end of the line 
+#DOC:   SYNOPSIS 
+#DOC:     removeTrailingSpaces 
+#DOC:   DESCRIPTION 
+#DOC:     Removes white characters at the end of the line. 
+#DOC:   EXAMPLES 
+#DOC:     Removing trailing white spaces from text: 
+#DOC:       echo -e "Text with spaces " | removeTrailingSpaces 
+#DOC:       outputs “Text with spaces” 
+#DOC: 
+alias removeTrailingSpaces="sed 's/[ \t]*$//'"
+
+#DOC: trimText 
+#DOC:   NAME 
+#DOC:     trimText - removes white spaces at the beginning and end of the line 
+#DOC:   SYNOPSIS 
+#DOC:     trimText 
+#DOC:   DESCRIPTION 
+#DOC:     Removes white spaces at the beginning and end of the line. 
+#DOC:   EXAMPLES 
+#DOC:     Trimming white spaces from text: 
+#DOC:       echo -e " Text with spaces " | trimText 
+#DOC:       outputs “Text with spaces” 
+#DOC: 
+alias trimText="sed 's/^[ \t]*//' |sed 's/[ \t]*$//'"
+
+#DOC: removeBlankLines 
+#DOC:   NAME 
+#DOC:     removeBlankLines - remove empty lines and lines containing only white spaces 
+#DOC:   SYNOPSIS 
+#DOC:     removeBlankLines 
+#DOC:   DESCRIPTION 
+#DOC:     Removes empty lines and lines containing only white spaces. 
+#DOC:   EXAMPLES 
+#DOC:     Removing blank lines from text: 
+#DOC:       echo -e “\n\nText\n\n” | removeBlankLines 
+#DOC:       outputs “Text” 
+#DOC: 
+alias removeBlankLines="sed '/^[ \t]*$/ d'"
+
+#DOC: upperToLower 
+#DOC:   NAME 
+#DOC:     upperToLower - transforms all upper letters to lower letters 
+#DOC:   SYNOPSIS 
+#DOC:     upperToLower 
+#DOC:   DESCRIPTION 
+#DOC:     Transforms all upper letters to lower letters. 
+#DOC:   EXAMPLES 
+#DOC:     Transforming text from upper to lower case: 
+#DOC:       echo “TEXT” | upperToLower 
+#DOC:       outputs “text”
+#DOC: 
+alias upperToLower="tr '[A-Z]' '[a-z]'"
+
+#DOC: lowerToUpper 
+#DOC:   NAME 
+#DOC:     lowerToUpper - transforms all lower letters to upper 
+#DOC:   SYNOPSIS 
+#DOC:     lowerToUpper 
+#DOC:   DESCRIPTION 
+#DOC:     Transforms all lower letters to upper. 
+#DOC:   EXAMPLES 
+#DOC:     Transforming text from lower to upper case: 
+#DOC:       echo “text” | lowerToUpper 
+#DOC:       outputs “TEXT” #DOC:
+#DOC: 
+alias lowerToUpper="tr '[a-z]' '[A-Z]'"
+
+#DOC: tabToSpaces
+#DOC:   NAME
+#DOC:     tabToSpaces - transforms all tabs to 4 spaces 
+#DOC:   SYNOPSIS
+#DOC:     tabToSpaces
+#DOC:   DESCRIPTION
+#DOC:     Transforms all tabs to 4 spaces.
+#DOC:   EXAMPLES
+#DOC:     Removing tabs for the file: 
+#DOC:       cat myfile.txt | tabToSpaces > myfileWithExpandedTabs.txt
+#DOC: 
+alias tabToSpaces="sed 's/\t/    /g'"
+
+#DOC: rmnpac
+#DOC:   NAME 
+#DOC:     rmnpac - remove NonPrintable ASCII Characters 
+#DOC:   SYNOPSIS 
+#DOC:     rmnpac 
+#DOC:   DESCRIPTION 
+#DOC:     Removes all characters except letters, numbers, and some special characters (group of characters from 40 to 176 octal and 12 and 15 octal). 
+#DOC:   EXAMPLES 
+#DOC:     Removing non-printable ASCII characters from a file and then replacing it: 
+#DOC:       cat myfile.csv | rmnpac > newmyfile.csv
+#DOC:       mv myfile.csv oldmyfile.csv 
+#DOC:       mv newmyfile.csv myfile.csv
+#DOC:   SEE ALSO
+#DOC:     pnpac
+#DOC: 
+alias rmnpac="tr -cd '\040-\176,\012,\015'"
+
+#DOC: pnpac
+#DOC:   NAME
+#DOC:     pnpac - print NonPrintable ASCII Characters
+#DOC: 
+#DOC:   SYNOPSIS
+#DOC:     pnpac
+#DOC: 
+#DOC:   DESCRIPTION
+#DOC:     Prints all characters except letters, numbers, and some special characters (group of characters from 40 to 176 octal and 12 and 15 octal).
+#DOC: 
+#DOC:   EXAMPLES
+#DOC:     Get the number of non-printable ASCII characters in a file:
+#DOC:         cat myfile.csv | pnpac | wc -c
+#DOC: 
+#DOC:     Get non-printable ASCII characters hex values:
+#DOC:         cat myfile.csv | pnpac | hexdump -C
+#DOC: 
+#DOC:   SEE ALSO
+#DOC:     rmnpac
+#DOC: 
+alias pnpac="tr -d '\040-\176,\012,\015'"
+
+#DOC: FindNPAC
+#DOC:   NAME
+#DOC:     FindNPAC - Find non-printable ASCII characters in a file
+#DOC:   SYNOPSIS
+#DOC:     findNPAC FILE
+#DOC:   DESCRIPTION
+#DOC:     This function finds non-printable ASCII characters in a file and prints their positions as line and character numbers, along with their hexadecimal values.
+#DOC:     Non-printable ASCII characters are characters in the ASCII character set that do not represent a visible symbol or character.
+#DOC:     These characters are typically used for control purposes, such as signaling the end of a line or the start of a new page.
+#DOC:     In this function, non-printable ASCII characters are defined as any character that is not a printable ASCII character (i.e., not in the range of 32-126), a newline (10), a tab (9), or a carriage return (13).
+#DOC:     Printable ASCII characters include alphanumeric characters (A-Z, a-z, 0-9) and common punctuation and symbols such as ! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | } ~.
+#DOC:     Non-printable ASCII characters in a file can cause issues with lookups and should be removed to ensure correct functionality.
+#DOC:   SEE ALSO
+#DOC:     rmnpac, pnpac, checkCSVNonASCIIChars
+#DOC: 
+findNPAC() {
+    LC_ALL=C
+    local file="$1"
+
+    if [ -z "$file" ]; then
+        echo "Usage: csvFindNPAC FILE" >&2
+        echo "Error: No file specified" >&2
+        return 1
+    fi
+
+    if [ ! -e "$file" ]; then
+        echo "Error: File '$file' does not exist" >&2
+        return 1
+    fi
+
+    if [ ! -r "$file" ]; then
+        echo "Error: File '$file' is not readable" >&2
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        line_num=$(expr $line_num + 1)
+        char_num=0
+        while IFS= read -r -n1 char; do
+            #hex_char=$(printf '%s' "$char" | od -A n -t x1 | tr -d ' ')
+            #echo "Processing character: $char ; Hex: $hex_char"
+            char_num=$(expr $char_num + 1)
+            if [ "$(printf '%s' "$char" | tr -d '\040-\176\012\011\015' | wc -c)" -gt 0 ]
+            then
+                hex_char=$(printf '%s' "$char" | od -A n -t x1 | tr -d ' ')
+                printf 'Line: %d, Character: %d, Hex: %s\n' "$line_num" "$char_num" "$hex_char"
+            fi
+        done <<EOF
+$line
+EOF
+    done <"$file"
+}
+
+#VERSION HISTORY:
+#Version,Comment
+#20220308,ADDED: pnpac => print NonPrinatableASCIICharacters
+#20220309,ADDED: csvRemoveHeader,csvPrintHeader 
+#20221116,REMOVED: csvRemoveHeader,csvPrintHeader they are not part of separat csvedit library
+#20221205,ADDED: \015 = CR into rmnpac and pnpac
+#20230402,ADDED: Doc comments
+#20230403,CORRECTED: removeBlankLines
+#20230423,ADDED: Additional DOC Comments to support help system
+#20230427,ADDED: Additional DOC Comments with examples of usage to support help system
+#20230613,ADDED: findNPAC which is just copy of csvFindNPAC from splunkFunctions
+#20230622,ADDED: getTextEditAliasesVersion

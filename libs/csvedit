@@ -1,0 +1,389 @@
+#! /bin/sh
+
+#Library to work with csv files
+#This Library below contains its own documentation just do:
+#grep "#DOC: " csvedit| sed 's/[ \t]*#DOC://'
+
+# Library of functions to manipulate ini files
+#Variables:
+csveditAuthor='Jiri Kindl'
+csveditVersion='20231016'
+
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: csvedit
+#DOC: DESCRIPTION: Library to work with csv files  
+#DOC: 
+
+#DOC: getCsveditVersion
+#DOC:   NAME 
+#DOC:     getCsveditVersion - Print csvedit version 
+#DOC:   SYNOPSIS 
+#DOC:     getCsveditVersion
+#DOC:   DESCRIPTION 
+#DOC:     Print csvedit version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getCsveditVersion() {
+  echo $csveditVersion
+  return 0
+}
+
+#DOC: csvCheckFile FILE
+#DOC:   NAME
+#DOC:        csvCheckFile - check if a file exists and is readable
+#DOC:   SYNOPSIS
+#DOC:        csvCheckFile FILE
+#DOC:   DESCRIPTION
+#DOC:        csvCheckFile checks if the FILE given as an argument exists and is readable. If the file does not exist or is not readable, the function will return an error message and a non-zero exit code.
+#DOC:   EXIT STATUS
+#DOC:        0 if the file exists and is readable
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvCheckFile() {
+  local filename=$1
+  if [ ! -e $filename ]
+  then
+    echo "Error: File $filename do not exist" >&2
+    return 11
+  fi
+
+  if [ ! -r $filename ]
+  then
+    echo "Error: File $filename not readable, Permission Denied" >&2
+    return 12
+  fi
+  return 0
+}
+
+#DOC: csvGetHeader FILE
+#DOC:   NAME
+#DOC:        csvGetHeader - print out the header (first line) of a file
+#DOC:   SYNOPSIS
+#DOC:        csvGetHeader FILE
+#DOC:   DESCRIPTION
+#DOC:        csvGetHeader prints out the header (first line) of the FILE given as an argument. If the file does not exist or is not readable, the function will return an error message and a non-zero exit code.
+#DOC:   EXIT STATUS
+#DOC:        0 if the header is successfully printed
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvGetHeader() {
+  local filename=$1
+  csvCheckFile $filename
+  local checkFileResult=$?
+  if [ $checkFileResult -ne 0 ]
+  then
+    echo "Usage: csvGetHeader FILE" >&2
+    return $checkFileResult
+  fi
+  head -n 1 $filename
+  return 0
+}
+
+#DOC: csvGetContent FILE
+#DOC:   NAME
+#DOC:        csvGetContent - print out the content of a file without the header (first line)
+#DOC:   SYNOPSIS
+#DOC:        csvGetContent FILE
+#DOC:   DESCRIPTION
+#DOC:        csvGetContent prints out the content of the FILE given as an argument without the header (first line). If the file does not exist or is not readable, the function will return an error message and a non-zero exit code.
+#DOC:   EXIT STATUS
+#DOC:        0 if the content is successfully printed
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvGetContent() {
+  local filename=$1
+  csvCheckFile $filename
+  local checkFileResult=$?
+  if [ $checkFileResult -ne 0 ]
+  then
+    echo "Usage: csvGetContent FILE" >&2
+    return $checkFileResult
+  fi
+  sed '1 d' $filename
+  return 0
+}
+
+#DOC: csvGetFieldIndex FIELDNAME FILE
+#DOC:   NAME
+#DOC:        csvGetFieldIndex - get the index (starting from 1) of a field with a given name (in the header)
+#DOC:   SYNOPSIS
+#DOC:        csvGetFieldIndex FIELDNAME FILE
+#DOC:   DESCRIPTION
+#DOC:        csvGetFieldIndex gets the index (starting from 1) of the field with the given FIELDNAME in the header of the FILE. If the file does not exist or is not readable, or if the number of arguments is incorrect, the function will return an error message and a non-zero exit code.
+#DOC:   EXAMPLE
+#DOC:        csvGetFieldIndex myFieldName myCsvFile.csv
+#DOC:        id,UserName,phone
+#DOC:        returns: 2
+#DOC:   EXIT STATUS
+#DOC:        0 if the index is successfully found and printed
+#DOC:        1 if the field name is not found in the header
+#DOC:        10 if the number of arguments is incorrect
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvGetFieldIndex() {
+  local fieldname=$1
+  local filename=$2
+  local index=0
+  #precheck number of argunents
+  if [ $# -ne 2 ]
+  then
+    echo 'incorrect arguments'
+    return 10
+  fi
+  
+  #file exist and is readable
+  csvCheckFile $filename
+  local fcrv=$?
+
+  if [ $fcrv -ne 0 ]
+  then
+    #iniUsage iniGetAllSections
+    return $fcrv
+  fi 
+
+  
+  for index in $(seq $(head -n 1 $filename | sed 's/[^,]//g' |wc -c))
+  do
+	  if [ "$(head -n 1 $filename|cut -d',' -f$index | sed 's/\r//')" = "$fieldname" ]
+	  then
+		  echo $index
+		  return 0
+    fi
+  done
+  return 1
+}
+
+#DOC: csvFilterByField FIELD VALUE FILE
+#DOC:   NAME
+#DOC:        csvFilterByField - print out the lines where a field contains a specific value from a file
+#DOC:   SYNOPSIS
+#DOC:        csvFilterByField FIELD VALUE FILE
+#DOC:   DESCRIPTION
+#DOC:        csvFilterByField prints out the lines from the FILE where the FIELD contains the specific VALUE. If the file does not exist or is not readable, or if the number of arguments is incorrect, the function will return an error message and a non-zero exit code.
+#DOC:   EXAMPLE
+#DOC:        having file below I want to get list of Search Heads (Install_role = SH)
+#DOC:        ID,Hostname,Role,IP,Install_role,Splunk_user,DataCollectors,,CPUs,RAM,Disk:/opt/splunk,Disk:/opt/data
+#DOC:        1,baseImage,baseImage,127.0.0.1,,,,,,,,
+#DOC:        2,TestSplunk,Development,10.0.0.101,SAD,splunk,infra360snmp-traps:tenant01,,2,8,100,200
+#DOC:        3,labSH01,Search Head,10.0.0.102,SH,splunk,,,,,,
+#DOC:        4,labSH02,Search Head,10.0.0.103,SH,splunk,,,,,,
+#DOC:        5,labIDX01,Indexer,10.0.0.104,I,splunk,,,,,,
+#DOC:        6,labIDX02,Indexer,10.0.0.105,I,splunk,,,,,, 
+#DOC: 
+#DOC:        [splunk@testSplunk tmp]$ csvFilterByField Install_role SH ACMESplunkClusterEnvironment.csv
+#DOC:        3,labSH01,Search Head,10.0.0.102,SH,splunk,,,,,,
+#DOC:        4,labSH02,Search Head,10.0.0.103,SH,splunk,,,,,,
+#DOC:   EXIT STATUS
+#DOC:        0 if the lines are successfully printed
+#DOC:        10 if the number of arguments is incorrect
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvFilterByField() {
+  local fieldname=$1
+  local fieldvalue=$2
+  local filename=$3
+
+  #precheck number of argunents
+  if [ $# -gt 3 ]
+  then
+    echo 'incorrect arguments'
+    return 10
+  fi
+
+  #file exist and is readable
+  error_message=$(csvCheckFile $filename)
+  fcrv=$?
+
+  if [ $fcrv -ne 0 ]
+  then
+    echo $error_message
+    #iniUsage iniGetAllSections
+    return $fcrv
+  fi
+
+  local fieldname_index=$(csvGetFieldIndex $fieldname $filename)
+  if [ $? -eq 1 ]
+  then
+    echo "No such field: $fieldname; in file: $filename" >&2
+  fi
+
+  while read LINE
+  do
+    if [ "$(echo $LINE | sed 's/\r//'| cut -d, -f$fieldname_index)" = "$fieldvalue" ]
+    then
+      echo $LINE
+    fi
+  done < $filename
+
+}
+
+#DOC: csvContainsMultiLinesFields
+#DOC:   NAME
+#DOC:     csvContainsMultiLinesFields - return the number of multi-line records in a given CSV file
+#DOC:   SYNOPSIS
+#DOC:     csvContainsMultiLinesFields [-v|-vv] FILE
+#DOC:   DESCRIPTION
+#DOC:     This function returns the number of multi-line records in a given CSV file.
+#DOC:     A multi-line field in a CSV file is a field that contains line breaks.
+#DOC:     Normally, each line in a CSV file represents a single record, with fields separated by a delimiter such as a comma.
+#DOC:     However, sometimes a field may contain line breaks, which means that the record spans multiple lines in the file.
+#DOC:     This can happen when a field contains text with paragraphs or other formatting that includes line breaks.
+#DOC:
+#DOC:     Options:
+#DOC:       -v    Verbose output. Prints the filename and the number of the line where a multiline field is found.
+#DOC:       -vv   More verbose output. Prints the filename, the number of the line, and the content of the line where a multiline field is found.
+#DOC:
+#DOC:   EXAMPLES
+#DOC:     Here is an example of a CSV file that includes both normal (ID 1) and multi-line (ID 2) records:
+#DOC:         ID,First Name,Last Name,Address,Phone
+#DOC:         1,Jane,Doe,456 Elm St. Anytown, USA,555-1234
+#DOC:         2,John,Doe,"123 Main St.
+#DOC:         Anytown, USA",555-5678
+#DOC:
+#DOC:   Example of use:
+#DOC: 
+#DOC:         if csvContainsMultiLinesFields example.csv
+#DOC:         then
+#DOC:           echo "The file example.csv does not contain multi-line record
+#DOC:         else
+#DOC:           echo "The file example.csv does contain multi-line records"
+#DOC:         fi
+#DOC: 
+#DOC:         Or as oneliner:
+#DOC:         csv=example.csv; if csvContainsMultiLinesFields $csv; then echo "Not contain multi-line record; else echo "Contain multi-line records"; fi
+#DOC: 
+csvContainsMultiLinesFields() {
+  local verbose=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -v) verbose=1; shift ;;
+      -vv) verbose=2; shift ;;
+      *) file="$1"; shift ;;
+    esac
+  done
+  
+  if [ -z "$file" ]
+  then
+    echo "Error: No CSV file provided" >&2
+    echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
+    return 1
+  fi
+  
+  local csv=$file
+  
+  if [ ! -e "$csv" ]
+  then
+    echo "Error: File $csv does not exist" >&2
+    echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
+    return 1
+  fi
+  
+  if [ ! -r "$csv" ]
+  then
+    echo "Error: File $csv is not readable" >&2
+    echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
+    return 1
+  fi
+  
+  local backupIFS=$IFS
+  local count=0
+  IFS=$'\n'
+  
+  #get all lines which contains qoutes
+  
+  for line in $(grep -H -n -E '\"' $csv)
+  do
+    #get just the qutes (") and check if it even number modulo 2 = 1 (even number)
+    if [ $(expr $(echo $line |tr -cd '\"' | wc -c) % 2) -eq 1 ]
+    then
+      count=$(expr $count + 1)
+      if [ $verbose -eq 1 ]; then
+        echo "filename: $csv, number of line: $(echo $line | cut -d ':' -f2)"
+      elif [ $verbose -eq 2 ]; then
+        echo "filename: $csv, number of line: $(echo $line | cut -d ':' -f2)"
+        echo "line content: $(echo $line | cut -d ':' -f3-)"
+      fi
+    fi
+  done
+  
+  IFS=$backupIFS
+  
+  return $count
+}
+
+#DOC: csvFlattenMultiLineFields [-s SEPARATOR] FILE
+#DOC:   NAME
+#DOC:        csvFlattenMultiLineFields - flatten multiline fields in a CSV file
+#DOC:   SYNOPSIS
+#DOC:        csvFlattenMultiLineFields [-s SEPARATOR] FILE
+#DOC:   DESCRIPTION
+#DOC:        csvFlattenMultiLineFields reads the content of the FILE given as an argument and flattens any multiline fields by removing newlines. An optional SEPARATOR can be specified using the -s flag, which will be inserted in place of the removed newlines. If the file does not exist or is not readable, the function will return an error message and a non-zero exit code.
+#DOC:   OPTIONS
+#DOC:        -s SEPARATOR
+#DOC:             Specifies a separator to insert in place of removed newlines.
+#DOC:   EXIT STATUS
+#DOC:        0 if the content is successfully printed
+#DOC:        1 if no parameter is entered
+#DOC:        2 if the file doesn't exist
+#DOC:        3 if the file is not readable
+#DOC: 
+csvFlattenMultiLineFields() {
+    local separator=""
+    local file=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -s) separator="$2"; shift 2 ;;
+            --) shift; break ;;
+            *) file="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$file" ]; then
+        echo "Error: No parameter entered"
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        return 1
+    elif [ ! -f "$file" ]; then
+        echo "Error: File doesn't exist"
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        return 2
+    elif [ ! -r "$file" ]; then
+        echo "Error: Cannot read file"
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        return 3
+    fi
+
+    local linetoprint=""
+    local line
+    local quotes=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        linetoprint="$linetoprint$line"
+        quotes=$(echo "$linetoprint" | grep -o '"' | wc -l)
+        if [ $(expr $quotes % 2) -eq 0 ]; then
+            printf "%s\n" "$linetoprint"
+            linetoprint=""
+        else
+            linetoprint="$linetoprint$separator"
+        fi        
+    done < "$file"
+    if [ -n "$linetoprint" ]; then
+        printf "%s\n" "$linetoprint"
+    fi
+}
+
+#VERSION HISTORY:
+#20221130,CORRECTED: csvGetFieldIndex and csvFilterByField; didn't work for last field with windows end of the line (correction remove WinOEL)
+#20230419,ADDED: #DOC comments
+#20230425,ADDED: Addition DOC Comments to support help system
+#20230530,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
+#20230605,UPDATED: function definitions removed space between functionName and () to support the help system
+#20230613,ADDED: containsMultiLinesFields
+#20230622,ADDED: getCsveditVersion
+#20230627,CORRECTED: csvCheckFile was reffering iniUsage, redirect the error message to stderr, Proper Usage for csvGetContent,containsMultiLinesFields,csvGetHeader
+#20230716,ADDED: csvFlattenMultiLineFields, CHANGED: containsMultiLinesFields to csvContainsMultiLinesFields
+#20230722,UPDATED: function csvContainsMultiLinesFields add verbose and more verbose mode
+#20231016,CORRECTED: csvContainsMultiLinesFields help corrected

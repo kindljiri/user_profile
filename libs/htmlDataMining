@@ -1,0 +1,84 @@
+#! /bin/sh
+
+#Library to get data from HTML code
+#This Library below contains its own documentation just do:
+#grep "#DOC: " htmlDataMining | sed 's/[ \t]*#DOC://'
+
+# Library of functions to get data from HTML code
+#Variables:
+htmlDMAuthor='Jiri Kindl'
+htmlDMVersion='20230626'
+
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: htmlDataMining
+#DOC: DESCRIPTION: Library to get data from HTML code
+#DOC: 
+
+#DOC: getHtmlDataMiningVersion 
+#DOC:   NAME 
+#DOC:     getHtmlDataMiningVersion - Print htmlDataMining version 
+#DOC:   SYNOPSIS 
+#DOC:     getHtmlDataMiningVersion 
+#DOC:   DESCRIPTION 
+#DOC:     Print htmlDataMining version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getHtmlDataMiningVersion() {
+  echo $htmlDMVersion
+  return 0
+}
+
+#DOC: htmlGetTables
+#DOC:   NAME
+#DOC:     htmlGetTables - Extract tables from an HTML file
+#DOC:   SYNOPSIS
+#DOC:     htmlGetTables INPUTFILE [OUTPUTFILE]
+#DOC:   DESCRIPTION
+#DOC:     This function extracts all tables from the specified HTML file and saves them in the specified output file in HTML format. If the output file is not specified, the extracted tables are printed to the standard output.
+#DOC:   EXAMPLES
+#DOC:     htmlGetTables input.html tables.html
+#DOC:     htmlGetTables input.html
+htmlGetTables() {
+    if [ $# -lt 1 ]; then
+        printf 'Error: missing input file argument\n' >&2
+        printf 'Usage: htmlGetTables INPUTFILE [OUTPUTFILE]\n' >&2
+        return 1
+    fi
+    local inputfile="$1"
+    if [ ! -e "$inputfile" ]; then
+        printf 'Error: input file does not exist: %s\n' "$inputfile" >&2
+        printf 'Usage: htmlGetTables INPUTFILE [OUTPUTFILE]\n' >&2
+        return 1
+    fi
+    if [ ! -r "$inputfile" ]; then
+        printf 'Error: cannot read input file: %s\n' "$inputfile" >&2
+        printf 'Usage: htmlGetTables INPUTFILE [OUTPUTFILE]\n' >&2
+        return 1
+    fi
+
+    local outputfile="$2"
+    local intable=0
+    local tempfile="$(mktemp)"
+    sed 's/<table/\n<table/gi; s/<\/table/\n<\/table/gi' "$inputfile" > "$tempfile"
+    while IFS= read -r line; do
+        case "$line" in
+            *\<table*) intable=1 ;;
+        esac
+        if [ "$intable" -eq 1 ]; then
+            if [ -z "$outputfile" ]; then
+                printf '%s\n' "$line"
+            else
+                printf '%s\n' "$line" >> "$outputfile"
+            fi
+        fi
+        case "$line" in
+            *\</table*) intable=0 ;;
+        esac
+    done < "$tempfile"
+    rm -f "$tempfile"
+}
+
+
+#VERSION HISTORY:
+#Version,Comment
+#20230626,INIT Version

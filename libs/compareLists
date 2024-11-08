@@ -1,0 +1,112 @@
+#! /bin/sh
+
+#Library to manipulate INI style config file from Command line
+#This Library below contains its own documentation just do:
+#grep "#DOC: " compareLists | sed 's/[ \t]*#DOC://'
+
+# Library of functions to manipulate ini files
+#Variables:
+inieditAuthor='Jiri Kindl'
+inieditVersion='20241016'
+
+#DOC: LIBRARY NAME: compareLists
+#DOC: DESCRIPTION: Library to compare lists line by line from Command line
+#DOC: 
+
+# DOC: clInAandB
+# DOC:   NAME
+# DOC:     clInAandB - Find common lines in two files
+# DOC:   SYNOPSIS
+# DOC:     clInAandB FILE1 FILE2
+# DOC:   DESCRIPTION
+# DOC:     This function finds and prints lines that are common to both FILE1 and FILE2.
+# DOC:   EXAMPLES
+# DOC:     clInAandB file1.txt file2.txt
+clInAandB() {
+    local file1="$1"
+    local file2="$2"
+    # Check if two arguments are provided
+    if [ $# -ne 2 ]; then
+        echo "Error: Two arguments are required." >&2
+        return 1
+    fi
+    # Check if the arguments are files and are readable
+    for file in "$file1" "$file2"; do
+        if [ ! -f "$file" ]; then
+            echo "Error: $file is not a file." >&2
+            return 1
+        fi
+        if [ ! -r "$file" ]; then
+            echo "Error: $file is not readable." >&2
+            return 1
+        fi
+    done
+    # Lines in both files
+    comm -12 <(sort "$file1") <(sort "$file2")
+}
+
+# DOC: clnotInB
+# DOC:   NAME
+# DOC:     clnotInB - Find lines in FILE1 not present in FILE2
+# DOC:   SYNOPSIS
+# DOC:     clnotInB FILE1 FILE2
+# DOC:   DESCRIPTION
+# DOC:     This function finds and prints lines that are in FILE1 but not in FILE2.
+# DOC:   EXAMPLES
+# DOC:     clnotInB file1.txt file2.txt
+clnotInB() {
+    local file1="$1"
+    local file2="$2"
+    # Same checks as above
+    if [ $# -ne 2 ]; then
+        echo "Error: Two arguments are required." >&2
+        return 1
+    fi
+    for file in "$file1" "$file2"; do
+        if [ ! -f "$file" ]; then
+            echo "Error: $file is not a file." >&2
+            return 1
+        fi
+        if [ ! -r "$file" ]; then
+            echo "Error: $file is not readable." >&2
+            return 1
+        fi
+    done
+    # Lines in file1 but not in file2
+    comm -23 <(sort "$file1") <(sort "$file2")
+}
+
+# DOC: clnotInA
+# DOC:   NAME
+# DOC:     clnotInA - Find lines in FILE2 not present in FILE1
+# DOC:   SYNOPSIS
+# DOC:     clnotInA FILE1 FILE2
+# DOC:   DESCRIPTION
+# DOC:     This function finds and prints lines that are in FILE2 but not in FILE1.
+# DOC:   EXAMPLES
+# DOC:     clnotInA file1.txt file2.txt
+clnotInA() {
+    local file1="$1"
+    local file2="$2"
+    # Same checks as above
+    if [ $# -ne 2 ]; then
+        echo "Error: Two arguments are required." >&2
+        return 1
+    fi
+    for file in "$file1" "$file2"; do
+        if [ ! -f "$file" ]; then
+            echo "Error: $file is not a file." >&2
+            return 1
+        fi
+        if [ ! -r "$file" ]; then
+            echo "Error: $file is not readable." >&2
+            return 1
+        fi
+    done
+    # Lines in file2 but not in file1
+    comm -13 <(sort "$file1") <(sort "$file2")
+}
+
+#VERSION HISTORY:
+#Version,Comment
+#20241016,Initial version; functions: clnotInA; clnotInB; clInAandB

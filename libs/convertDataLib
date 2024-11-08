@@ -1,0 +1,416 @@
+#! /bin/sh
+
+#Library to convert data from one format to other
+#This Library below contains its own documentation just do:
+#grep "#DOC: " convertDataLib | sed 's/[ \t]*#DOC://'
+
+# Library of functions to convert data from oe format to other
+#Variables:
+convertDataLibAuthor='Jiri Kindl'
+convertDataLibVersion='20240416'
+
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: convertDataLib
+#DOC: DESCRIPTION: Library to convert data from oe format to other
+#DOC: 
+
+#DOC: getConvertDataLibVersion
+#DOC:   NAME 
+#DOC:     getConvertDataLibVersion - Print convertDataLib version 
+#DOC:   SYNOPSIS 
+#DOC:     getConvertDataLibVersion 
+#DOC:   DESCRIPTION 
+#DOC:     Print convertDataLib version, the version number is last changed date in format YYYYMMDD.
+#DOC: 
+getConvertDataLibVersion() {
+  echo $convertDataLibVersion
+  return 0
+}
+
+
+
+#DOC: convertCSV2JSON
+#DOC:   NAME
+#DOC:     convertCSV2JSON - Convert a CSV file to JSON format
+#DOC:   SYNOPSIS
+#DOC:     convertCSV2JSON INPUT_FILE [OUTPUT_FILE]
+#DOC:   DESCRIPTION
+#DOC:     This function converts a CSV file in the specified input file to JSON format.
+#DOC:     The first line of the CSV file should contain the header fields.
+#DOC:     If an output file is specified, the JSON data is written to the output file.
+#DOC:     Otherwise, the JSON data is output to standard output.
+#DOC:   EXAMPLES
+#DOC:     convertCSV2JSON input.csv output.json
+#DOC:     convertCSV2JSON input.csv
+#DOC: 
+convertCSV2JSON() {
+    # Check if the input argument was provided
+    if [ -z "$1" ]; then
+        # No input argument provided, print an error message and usage information, then exit
+        echo "Error: No input file specified" >&2
+        echo "Usage: convertCSV2JSON input.csv [output.json]" >&2
+        return 1
+    fi
+
+    # Check if the input file exists
+    if [ ! -e "$1" ]; then
+        # Input file does not exist, print an error message and usage information, then exit
+        echo "Error: Input file '$1' does not exist" >&2
+        echo "Usage: convertCSV2JSON input.csv [output.json]" >&2
+        return 1
+    fi
+
+    # Check if the input file is readable
+    if [ ! -r "$1" ]; then
+        # Input file is not readable, print an error message and usage information, then exit
+        echo "Error: Input file '$1' is not readable" >&2
+        echo "Usage: convertCSV2JSON input.csv [output.json]" >&2
+        return 1
+    fi
+
+    # Make the input and output variables local
+    local input=$1
+    local output=$2
+
+    # Make the other variables local
+    local header line i key value
+
+    # Read the header line from the input file
+    header=$(head -n 1 $input)
+
+    # Remove the header line from the input file and save it to a temporary file
+    sed '1d' $input > tmpfile
+
+    # Start the JSON output
+    if [ -z "$output" ]; then
+        # No output argument provided, set output to /dev/stdout
+        echo "["
+    else
+        echo "[" > $output
+    fi
+
+    # Loop through each line in the temporary file
+    while IFS= read -r line; do
+        # Start a new JSON object
+        if [ -z "$output" ]; then
+        # No output argument provided, set output to /dev/stdout
+          echo "  {"
+        else
+          echo "  {" >> $output
+        fi
+        
+
+        # Initialize the field index variable
+        i=1
+
+        # Loop through each key in the header and output as a key-value pair in the JSON object
+        for key in $(echo "$header" | tr ',' ' '); do
+            value=$(echo "$line" | cut -d',' -f $i)
+            if [ -z "$output" ]; then
+              # No output argument provided, set output to /dev/stdout
+              echo "    \"$key\": \"$value\","
+            else
+              echo "    \"$key\": \"$value\"," >> $output
+            fi
+            i=$(expr $i + 1)
+        done
+
+        # End the JSON object
+        if [ -z "$output" ]; then
+          # No output argument provided, set output to /dev/stdout
+          echo "  },"
+        else
+          echo "  }," >> $output
+        fi
+        
+    done < tmpfile
+
+    # End the JSON output
+    if [ -z "$output" ]; then
+      # No output argument provided, set output to /dev/stdout
+      echo "]"
+    else
+      echo "]" >> $output
+    fi
+    
+
+    # Remove the temporary file
+    rm -f $tmpfile
+
+    # Return success status code
+    return 0
+}
+
+#DOC: convertCSV2INI
+#DOC:   NAME
+#DOC:     convertCSV2INI - Convert a CSV file to INI format
+#DOC:   SYNOPSIS
+#DOC:     convertCSV2INI [-s SECTION] INPUT_FILE [OUTPUT_FILE]
+#DOC:   DESCRIPTION
+#DOC:     This function converts a CSV file in the specified input file to INI format.
+#DOC:     The first line of the CSV file should contain the header fields.
+#DOC:     If a section is specified using the -s SECTION argument, the value of the specified section field is used as the section name.
+#DOC:     Otherwise, the section name is set to row$Number, where $Number is the row number.
+#DOC:     If an output file is specified, the INI data is written to the output file.
+#DOC:     Otherwise, the INI data is output to standard output.
+#DOC:   EXAMPLES
+#DOC:     convertCSV2INI -s Name input.csv output.ini
+#DOC:     convertCSV2INI input.csv
+#DOC: 
+convertCSV2INI() {
+    # Check if the -s SECTION argument was provided
+    if [ "$1" == "-s" ]; then
+        # -s SECTION argument provided, shift the arguments and set the section variable
+        shift
+        section=$1
+        shift
+    fi
+
+    # Check if the input argument was provided
+    if [ -z "$1" ]; then
+        # No input argument provided, print an error message and usage information, then exit
+        echo "Error: No input file specified" >&2
+        echo "Usage: convertCSV2INI [-s SECTION] input.csv [output.ini]" >&2
+        return 1
+    fi
+
+    # Check if the input file exists
+    if [ ! -e "$1" ]; then
+        # Input file does not exist, print an error message and usage information, then exit
+        echo "Error: Input file '$1' does not exist" >&2
+        echo "Usage: convertCSV2INI [-s SECTION] input.csv [output.ini]" >&2
+        return 1
+    fi
+
+    # Check if the input file is readable
+    if [ ! -r "$1" ]; then
+        # Input file is not readable, print an error message and usage information, then exit
+        echo "Error: Input file '$1' is not readable" >&2
+        echo "Usage: convertCSV2INI [-s SECTION] input.csv [output.ini]" >&2
+        return 1
+    fi
+
+    # Make the input and output variables local
+    local input=$1
+    local output=$2
+
+    # Make the other variables local
+    local header line i key value rowNumber=0 currentSection
+
+    # Read the header line from the input file and remove enclosing quotes from fields if present 
+    header=$(head -n 1 $input | tr -d '"')
+
+    # Remove the header line from the input file and save it to a temporary file
+    sed '1d' $input > tmpfile
+
+    # Loop through each line in the temporary file
+    
+    while IFS= read -r line; do
+        rowNumber=$(expr $rowNumber + 1)
+        currentSection="row$rowNumber"
+        i=1
+        OLDIFS=$IFS
+        IFS=$'\n'
+        for key in $(echo "$header" | tr ',' '\n'); do     
+          value=$(echo "$line" | cut -d',' -f $i)
+          i=$(expr $i + 1)
+          if [ ! -z "$section" ] && [ "$key" == "$section" ]; then 
+              currentSection=$(echo $value|tr -d '"')
+              continue 
+          fi        
+          
+        done
+        IFS=$OLDIFS
+    
+        if [ -z "$output" ]; then 
+          echo "[$currentSection]"
+        else 
+          echo "[$currentSection]" >> $output 
+        fi
+      
+        i=1
+        OLDIFS=$IFS
+        IFS=$'\n'
+        for key in $(echo "$header" | tr ',' '\n'); do
+          value=$(echo "$line" | cut -d',' -f $i) 
+          i=$(expr $i + 1)
+
+          if [ ! -z "$section" ] && [ "$key" == "$section" ]; then 
+              continue     
+          fi
+
+          if [ -z "$output" ]; then 
+              echo "$key = $value"
+          else 
+              echo "$key = $value" >> $output 
+          fi
+
+        done
+        IFS=$OLDIFS
+    done < tmpfile
+    rm tmpfile
+    return 0
+    
+}
+
+#DOC: convertCSV2RSV
+#DOC:   NAME
+#DOC:     convertCSV2RSV - Convert a CSV file to RSV format
+#DOC:   SYNOPSIS
+#DOC:     convertCSV2RSV FILE
+#DOC:   DESCRIPTION
+#DOC:     This function reads a CSV file and converts it to RSV format. In the resulting RSV file, fields are separated by '\xFF' and records are separated by '\xFD'.
+#DOC:     The function handles quoted fields in the CSV file. If a field is enclosed in double quotes, commas within the field are not treated as field separators. Double quotes within a quoted field are escaped with a backslash.
+#DOC:     The argument to this function is the name of the CSV file to convert.
+#DOC:     Note: This function assumes that backslashes in the CSV file are used to escape double quotes. If your CSV data uses a different method for escaping quotes, or if it includes other escaped characters, you might need to adjust the function accordingly.
+#DOC:
+
+convertCSV2RSV() {
+    # Check if the input file contains \xFF or \xFD
+    if xxd -p "$1" | tr -d '\n' | sed 's/../&\n/g' | grep -qE '^ff$|^fd$'; then
+        echo "Error: The input file contains either \xFF or \xFD." >&2
+        return 1
+    fi
+
+    prev_char=''
+    while IFS= read -r -n1 char
+    do
+        if [ "$char" = '"' ] && [ "$prev_char" != '\\' ]; then
+            inside_quotes=$((inside_quotes ^ 1))
+        fi
+        if [ "$char" = ',' ] && [ "$inside_quotes" -eq 0 ]; then
+            printf '\xFF'
+        elif [ -z "$char" ]; then
+            printf '\xFD'
+        else
+            printf '%s' "$char"
+        fi
+        prev_char="$char"
+    done < "$1"
+}
+
+
+#DOC: convertCSV2HTMLTable
+#DOC:   NAME
+#DOC:     convertCSV2HTMLTable - Convert a CSV file to an HTML table
+#DOC:   SYNOPSIS
+#DOC:     convertCSV2HTMLTable [-H] INPUT_FILE
+#DOC:   DESCRIPTION
+#DOC:     This function converts a CSV file in the specified input file to an HTML table.
+#DOC:     If the -H option is specified, the first line of the input file is treated as a header row.
+#DOC:     The HTML table is output to standard output.
+#DOC:   OPTIONS
+#DOC:     -H    Treat the first line of the input file as a header row
+#DOC:     -h    Display this help message
+#DOC:   EXAMPLES
+#DOC:     convertCSV2HTMLTable -H input.csv
+#DOC:     convertCSV2HTMLTable input.csv > output.html
+#DOC:
+convertCSV2HTMLTable() {
+    inside_quotes=0
+    prev_char=''
+    header=0
+    if [ "$1" = "-H" ]; then
+        header=1
+        shift
+    elif [ "$1" = "-h" ]; then
+        echo "Usage: convertCSV2HTMLTable [-H] INPUT_FILE"
+        echo "Convert a CSV file to an HTML table."
+        echo "Options:"
+        echo "  -H    Treat the first line of the input file as a header row"
+        echo "  -h    Display this help message"
+        return 0
+    fi
+    input_file="$1"
+    if [ -z "$input_file" ]; then
+        echo "Error: missing input file argument" >&2
+        echo "Usage: convertCSV2HTMLTable [-H] INPUT_FILE" >&2
+        return 1
+    elif [ ! -e "$input_file" ]; then
+        echo "Error: input file '$input_file' does not exist" >&2
+        echo "Usage: convertCSV2HTMLTable [-H] INPUT_FILE" >&2
+        return 1
+    elif [ ! -r "$input_file" ]; then
+        echo "Error: input file '$input_file' is not readable" >&2
+        echo "Usage: convertCSV2HTMLTable [-H] INPUT_FILE" >&2
+        return 1
+    fi
+    echo "<table>"
+    if [ "$header" -eq 1 ]; then
+        echo -n "<tr><th>"
+    else
+        echo -n "<tr><td>"
+    fi
+    while IFS= read -r -n1 char
+    do
+        if [ "$char" = '"' ] && [ "$prev_char" != '\\' ]; then
+            inside_quotes=$((inside_quotes ^ 1))
+        fi
+        if [ "$char" = ',' ] && [ "$inside_quotes" -eq 0 ]; then
+            if [ "$header" -eq 1 ]; then
+                echo -n "</th><th>"
+            else
+                echo -n "</td><td>"
+            fi
+        elif [ -z "$char" ] && [ "$inside_quotes" -eq 0 ]; then
+            if [ "$header" -eq 1 ]; then
+                echo "</th></tr>"
+                header=0
+            else
+                echo "</td></tr>"
+            fi
+            echo -n "<tr><td>"
+        elif [ "$char" != '"' ]; then
+            echo -n "$char"
+        fi
+        prev_char="$char"
+    done < "$input_file"
+    echo "</td></tr>"
+    echo "</table>"
+}
+
+#DOC: convertHTMLTable2CSV
+#DOC:   NAME
+#DOC:     convertHTMLTable2CSV - Convert an HTML table to CSV format
+#DOC:   SYNOPSIS
+#DOC:     convertHTMLTable2CSV INPUT_FILE [OUTPUT_FILE]
+#DOC:   DESCRIPTION
+#DOC:     This function converts an HTML table in the specified input file to CSV format.
+#DOC:     If an output file is specified, the CSV data is written to the output file.
+#DOC:     Otherwise, the CSV data is output to standard output.
+#DOC:   EXAMPLES
+#DOC:     convertHTMLTable2CSV input.html output.csv
+#DOC:     convertHTMLTable2CSV input.html
+#DOC: 
+convertHTMLTable2CSV() {
+    local input_file="$1"
+    local output_file="$2"
+    if [ -z "$input_file" ]; then
+        echo "Error: missing input file argument" >&2
+        echo "Usage: convertHTMLTable2CSV INPUT_FILE [OUTPUT_FILE]" >&2
+        return 1
+    elif [ ! -e "$input_file" ]; then
+        echo "Error: input file '$input_file' does not exist" >&2
+        echo "Usage: convertHTMLTable2CSV INPUT_FILE [OUTPUT_FILE]" >&2
+        return 1
+    elif [ ! -r "$input_file" ]; then
+        echo "Error: input file '$input_file' is not readable" >&2
+        echo "Usage: convertHTMLTable2CSV INPUT_FILE [OUTPUT_FILE]" >&2
+        return 1
+    fi
+    if [ -z "$output_file" ]; then
+        sed 's/<\/td>/,/g; s/<\/th>/,/g; s/<\/tr>/\n/g; s/<[^>]*>//g' "$input_file"
+    else
+        sed 's/<\/td>/,/g; s/<\/th>/,/g; s/<\/tr>/\n/g; s/<[^>]*>//g' "$input_file" > "$output_file"
+    fi
+}
+
+#VERSION HISTORY:
+#Version,Comment
+#20230626,INIT Version
+#20230627,ADDED: convertCSV2JSON
+#20230701,ADDED: convertCSV2INI
+#20240120,ADDED: convertCSV2RSV, convertCSV2HTMLTable
+#20240125,UPDATED: convertCSV2HTMLTable better output formating and End of Lines
+#20240416,UPDATED: convertCSV2RSV added check if separator and line terminator characters are not in input data
