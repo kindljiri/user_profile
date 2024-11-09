@@ -25,4 +25,6 @@ Append below line
 to .bash_profile or if not exist then to .profile
 
 Switch on line numbering in vim/vi
+```
 cp ~/splunk_user_profile/.vimrc ~
+```
