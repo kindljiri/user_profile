@@ -1,4 +1,4 @@
-profileVersion='20230626'
+profileVersion='20241119'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
@@ -127,15 +127,15 @@ profileVersion() {
 echo "User profile loading libraries..."
 
 # Loading libraries
-. ~/libs/textEditAliases
-. ~/libs/libip
-. ~/libs/iniedit
-. ~/libs/csvedit
-. ~/libs/snmptrapFunctions
-. ~/libs/snmpMIBFunctions
-. ~/libs/adminFunctions
-. ~/libs/htmlDataMining
-. ~/libs/convertDataLib
+. ~/user_profile/libs/textEditAliases
+. ~/user_profile/libs/libip
+. ~/user_profile/libs/iniedit
+. ~/user_profile/libs/csvedit
+. ~/user_profile/libs/snmptrapFunctions
+. ~/user_profile/libs/snmpMIBFunctions
+. ~/user_profile/libs/adminFunctions
+. ~/user_profile/libs/htmlDataMining
+. ~/user_profile/libs/convertDataLib
 
 echo "User profile loaded"
 echo "For more information, help and documentation run: profileHelp"
