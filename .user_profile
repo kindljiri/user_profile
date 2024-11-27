@@ -1,10 +1,10 @@
-profileVersion='20241119'
+profileVersion='20241127'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
     if [ "$1" != "" ]; then
         libraryFunctions="$1"
-        libraryFile=$(grep -h "^\. .*${libraryFunctions}$" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+        libraryFile=$(grep -h "^\. .*${libraryFunctions}$" ~/user_profile/.*_profile | sed 's/^\. //')
         if [ "$libraryFile" != "" ]; then
             libraryFile="${libraryFile/#\~/$HOME}"
             grep "#DOC:   NAME" $libraryFile -A 1 | grep -v "#DOC:   NAME" | grep -v "^--"| sed 's/#DOC:[ \t]*//'
@@ -15,7 +15,7 @@ profileHelpLF() {
         while read -r libraryFile; do
             libraryFile="${libraryFile/#\~/$HOME}"
             grep "#DOC:   NAME" $libraryFile -A 1 | grep -v "#DOC:   NAME" | grep -v "^--" | sed 's/#DOC:[ \t]*//'
-        done < <(grep -h "^\. ~" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+        done < <(grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //')
     fi
 }
 
@@ -56,7 +56,7 @@ profileHelpLL() {
         libraryName=$(grep -h "^#DOC: LIBRARY NAME:" $libraryFile | sed 's/^#DOC: LIBRARY NAME:[ \t]*//')
         libraryDescription=$(grep "^#DOC: DESCRIPTION:" $libraryFile | sed 's/^#DOC: DESCRIPTION:[ \t]*//')
         printf "%s\n  %s\n\n" "$libraryName" "$libraryDescription"
-    done < <(grep -h "^\. ~" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+    done < <(grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //')
 }
 
 profileHelpLH() {
