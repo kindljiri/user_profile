@@ -21,7 +21,7 @@ profileHelpLF() {
 
 profileHelpFH() {
     local functionName=$1
-    local libfile=$(grep -rl "#DOC: $functionName[ $]\?" ~/libs)
+    local libfile=$(grep -rl "#DOC: $functionName[ $]\?" ~/user_profile/libs)
     if [ -z "$libfile" ]; then
         echo "Error: Function '$functionName' not found. You can list available functions using the '-lf' or '--listFunctions' option."
         return
@@ -62,7 +62,7 @@ profileHelpLL() {
 profileHelpLH() {
     local libraryHelp libraryFile
     libraryHelp="$1"
-    libraryFile=$(grep -h "^\. ~.*${libraryHelp}$" ~/splunk_user_profile/.*_profile | sed 's/^\. //')
+    libraryFile=$(grep -h "^\. ~.*${libraryHelp}$" ~/user_profile/.*_profile | sed 's/^\. //')
     if [ "$libraryFile" != "" ]; then
         libraryFile="${libraryFile/#\~/$HOME}"
         grep "^#DOC: " $libraryFile | sed 's/[ \t]*#DOC://'
