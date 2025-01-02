@@ -6,7 +6,7 @@
 
 #Variables:
 Author='Jiri Kindl'
-TextEditAliasesVersion='20230621'
+TextEditAliasesVersion='20250102'
 
 #Version history at the end of the file:
 
@@ -26,6 +26,21 @@ getTextEditAliasesVersion() {
   echo $TextEditAliasesVersion
   return 0
 }
+
+#DOC: rmLeadingZeros 
+#DOC:   NAME 
+#DOC:     rmLeadingZeros - removes leading zeros 
+#DOC:   SYNOPSIS 
+#DOC:     rmLeadingZeros
+#DOC:   DESCRIPTION 
+#DOC:     removes leading zeros 
+#DOC:   EXAMPLES 
+#DOC:     Removing carriage returns from text: 
+#DOC:       echo 0005 | rmLeadingZeros
+#DOC:       outputs 5
+#DOC: 
+alias rmLeadingZeros="sed 's/^0*//'"
+
 
 #DOC: winEOL2linEOL 
 #DOC:   NAME 
