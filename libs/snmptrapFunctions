@@ -340,6 +340,38 @@ listSNMPVariables() {
   grep -o -E "[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*::[a-zA-Z0-9]+(\.[0-9]+)* =" $snmptrapdlog |sed 's/ =//'g | sort | uniq
 }
 
+translateSNMPv3() {
+  input=$(cat)  # Read all input from the pipe
+
+  # Apply the preprocessing one-liner commands
+  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' | sed 's/,0201033011/,020103,/' )
+
+  parse_snmpv3_message() {
+    local snmpMsg="$1"
+
+    while [ -n "$snmpMsg" ]; do
+      tag=$(echo "$snmpMsg" | cut -c1-2)
+      length_hex=$(echo "$snmpMsg" | cut -c3-4)
+      length=$((16#$length_hex))
+      field=$(echo "$snmpMsg" | cut -c1-$((4 + length * 2)))
+
+      printf "%s," "$field"
+
+      snmpMsg=$(echo "$snmpMsg" | cut -c$((5 + length * 2))-)
+    done
+    printf "\n"  # New line for each parsed message
+  }
+
+  echo "$processed_input" | while IFS=, read -r src_ip version snmpMsg; do
+    printf "Source IP: %s, Version: %s, SNMP Message: " "$src_ip" "$version"
+    parse_snmpv3_message "$snmpMsg"
+  done
+}
+
+# Capture packets and pipe them through the translateSNMPv3 function
+#tcpdump -vvv -x udp port 162 | translateSNMPv3
+
+
 #DOC: USAGE TIPS:
 #DOC: 
 #DOC:   USE CASE 1
