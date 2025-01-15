@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20230622"
+adminFuncVersion="20250115"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -503,6 +503,33 @@ getPartitionUsage() {
     return 0
 }
 
+#DOC: ...(dots)
+#DOC:   NAME
+#DOC:     ... - change directory up two levels
+#DOC:   SYNOPSIS
+#DOC:     ...
+#DOC:   DESCRIPTION
+#DOC:     The ... alias changes the current directory to the directory that is 2 levels up (../..) from the current directory.
+#DOC:     The .... alias changes the current directory to the directory that is 3 levels up (../../..) from the current directory.
+#DOC:     The ..... alias changes the current directory to the directory that is 4 levels up from the current directory.
+#DOC:     The ...... alias changes the current directory to the directory that is 5 levels up from the current directory.
+#DOC: 
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias .....="cd ../../../.."
+alias ......="cd ../../../../.."
+
+#DOC: +x
+#DOC:   NAME
+#DOC:     +x - make a file executable
+#DOC:   SYNOPSIS
+#DOC:     +x <filename>
+#DOC:   DESCRIPTION
+#DOC:     The +x alias makes a file executable by adding execute permissions to it.
+#DOC: 
+alias +x="chmod +x"
+
+
 #DOC: getCPUCount
 #DOC:   NAME
 #DOC:     getCPUCount - get the number of processors
@@ -615,3 +642,4 @@ checkFolderOwnership() {
 #20230531,UPDATED: converted DOC Comments to linux man like style and make them more detail and descriptive to extend help system
 #20230621,ADDED: untarAll alias
 #20230622,ADDED: getAdminFunctionsVersion - Print textEditAliases version 
+#20250115,ADDED: +x, ...(dots)
