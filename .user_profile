@@ -1,4 +1,4 @@
-profileVersion='20241127'
+profileVersion='20250121'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
@@ -122,6 +122,18 @@ profileHelp() {
 
 profileVersion() {
   echo "Profile Version: $profileVersion"
+}
+
+updateUserProfile() {
+    mv ~/user_profile ~/user_profile.backup
+    git clone https://github.com/kindljiri/user_profile.git
+    if [ $? -eq 0 ]
+    then
+      rm -rf ~/user_profile.backup
+    else
+      rm -rf ~/user_profile
+      mv ~/user_profile.backup ~/user_profile
+    fi
 }
 
 echo "User profile loading libraries..."
