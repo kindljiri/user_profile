@@ -343,8 +343,99 @@ listSNMPVariables() {
 translateSNMPv3() {
   input=$(cat)  # Read all input from the pipe
 
+  #THEORY 
+  #======
+  #SNMP is using ASN.1 to seraileze data and BER to encode it into packet.
+  #The format for BER is
+  #TAG LENGHT VALUE (where tag is basically the type of data, see table below)
+  # 01 | BOOLEAN
+  # 02 | INTEGER
+  # 03 | BIT STRING
+  # 04 | OCTET STRING
+  # 05 | NULL
+  # 06 | OBJECT IDENTIFIER
+  # 30 | SEQUENCE
+  # 31 | SET
+  # 13 | PrintableString
+  # 14 | T61String
+  # 16 | IA5String
+  # 17 | UTCTime
+  # 18 | GeneralizedTime
+  #
+  #Now we need the structure of SNMP v3 packet
+  #
+  # Version: 020103
+  # 02 | INTEGER
+  # 01 | Length (1 byte)
+  # 03 | SNMP version (3)
+  
+  # Message Global Data 3011
+  # 30 | SEQUENCE
+  # 11 | Length (17 bytes)
+  
+  #   Message ID: 02045678d881
+  #   02 | INTEGER
+  #   04 | Length (4 bytes)
+  #   5678d881 | Message ID
+  
+  #   Max Message Size: 020300ffe3
+  #   02 | INTEGER
+  #   03 | Length (3 bytes)
+  #   00ffe3 | Max Message Size
+  
+  #   Message Flags: 040103
+  #   04 | OCTET STRING
+  #   01 | Length (1 byte)
+  #   03 | Flags (reportable, authentication, no privacy)
+  
+  #   Security Model: 020103
+  #   02 | INTEGER
+  #   01 | Length (1 byte)
+  #   03 | Security Model
+  
+  # Security Parameters: 04363034
+  # 04 | OCTET STRING
+  # 36 | Length (54 bytes)
+  # 3034 | Nested sequence
+  
+  #   Security Parameters: 0409800000020109840301
+  #   04 | OCTET STRING
+  #   09 | Length (9 bytes)
+  #   800000020109840301 | Engine ID  
+
+  #   Engine Boots: 020101
+  #   02 | INTEGER
+  #   01 | Length (1 byte)
+  #   01 | Engine Boots count (1)
+  
+  #   Engine Time: 020101
+  #   02 | INTEGER
+  #   01 | Length (1 byte)
+  #   01 | Engine Time (1)
+  
+  #   Authoritative Engine Time: 020409ce46a6
+  #   02 | OCTET STRING
+  #   04 | Length (4 bytes)
+  #   09ce46a6 | Authoritative Engine Time
+
+  # User Information: 04066d7955736572
+  # Username
+  # 04 | OCTET STRING
+  # 06 | Length (6 bytes)
+  # 6d7955736572 | "myUser" (in ASCII)
+
+  # Authentication Parameters: 040c4cfe52d15c716d30b80110d7
+  # 04 | OCTET STRING
+  # 0c | Length (12 bytes)
+  # 4cfe52d15c716d30b80110d7 | Authentication Parameters (example value)
+  
+  # Privacy Parameters: 0408e068c15ad47beb8
+  # 04 | OCTET STRING
+  # 08 | Length (8 bytes)
+  # e068c15ad47beb8 | Privacy Parameters (example value)
+  
   # Apply the preprocessing one-liner commands
-  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' | sed 's/,0201033011/,020103,/' )
+  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' )
 
   parse_snmpv3_message() {
     local snmpMsg="$1"
