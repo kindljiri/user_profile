@@ -340,6 +340,40 @@ listSNMPVariables() {
   grep -o -E "[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*::[a-zA-Z0-9]+(\.[0-9]+)* =" $snmptrapdlog |sed 's/ =//'g | sort | uniq
 }
 
+BER2csv() {
+  local BER_string=$1
+  local csv_BER=''
+  while [ -n "$BER_string" ]; do
+      tag=$(echo "$BER_string" | cut -c1-2)
+      length_hex=$(echo "$BER_string" | cut -c3-4)
+      length=$(hex2dec $length_hex)
+      field=$(echo "$BER_string" | cut -c1-$((4 + length * 2)))
+      #echo "DEBUG: length_hex = $length_hex"
+      #echo "DEBUG: length = $length"
+      #echo "DEBUG: field = $field"
+    
+      csv_BER=$(printf "%s,%s" "$csv_BER" "$field")
+      BER_string=$(echo "$BER_string" | cut -c$((5 + length * 2))-)
+    done
+
+    echo $csv_BER | sed 's/^,//'
+}
+
+#DOC: translateSNMPv3
+#DOC:   NAME
+#DOC:     translateSNMPv3 - translates an SNMPv3 packet into a readable format
+#DOC:   SYNOPSIS
+#DOC:     translateSNMPv3
+#DOC:   DESCRIPTION
+#DOC:     Reads an SNMPv3 packet from tcpdump input, processes it, and outputs the data in a readable CSV format.
+#DOC:     The input can be provided either from a pcap file or live tcpdump capture.
+#DOC:   EXAMPLES
+#DOC:     # Read from a pcap file
+#DOC:     tcpdump -X -r SNMPv3.cap | translateSNMPv3
+#DOC:     # Live capture with a filter (e.g., port 161 for SNMP)
+#DOC:     tcpdump -X port 161 | translateSNMPv3
+#DOC:     Output: SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Engine Time,Authoritative Engine Time,Username,Authentication Parameters,Privacy Parameters,SNMP PDU
+#DOC: 
 translateSNMPv3() {
   input=$(cat)  # Read all input from the pipe
 
@@ -398,7 +432,7 @@ translateSNMPv3() {
   # 36 | Length (54 bytes)
   # 3034 | Nested sequence
   
-  #   Security Parameters: 0409800000020109840301
+  #   Engine ID: 0409800000020109840301
   #   04 | OCTET STRING
   #   09 | Length (9 bytes)
   #   800000020109840301 | Engine ID  
@@ -429,39 +463,67 @@ translateSNMPv3() {
   # 0c | Length (12 bytes)
   # 4cfe52d15c716d30b80110d7 | Authentication Parameters (example value)
   
-  # Privacy Parameters: 0408e068c15ad47beb8
+  # Privacy Parameters: 0408e068c15ad47beb8e
   # 04 | OCTET STRING
   # 08 | Length (8 bytes)
-  # e068c15ad47beb8 | Privacy Parameters (example value)
-  
-  # Apply the preprocessing one-liner commands
+  # e068c15ad47beb8e | Privacy Parameters (example value)
+
+  # SNMP PDU
+  # Rest of the data is content of the trap/notification
+  #
+
+  # Apply the preprocessing one-liner commands to get only relevant data
+  # Source IP from UDP Header
+  # And SNMP Packet
+  # In addition we filter out only SNMPv3
   processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' )
+  
+  #Print CSV header
+  echo "SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Engine Time,Authoritative Engine Time,Username,Authentication Parameters,Privacy Parameters,SNMP PDU"
 
-  parse_snmpv3_message() {
-    local snmpMsg="$1"
+  for packet in $processed_input 
+  do
+    src_ip_hex=$(echo "$packet" | cut -d, -f1)
+    snmp_version='020103'
+    snmp_packet=$(echo -n "$packet" | cut -d, -f2 | cut -c7-)
+    
+    #echo "DEBUG: snmp_packet = $snmp_packet"
+    
+    #Get Message Global Data
+    length_hex=$(echo -n "$snmp_packet" | cut -c3-4)
+    length=$(hex2dec $length_hex)
+    snmp_Msg_Glob_Data=$(echo -n "$snmp_packet" | cut -c1-$((4 + length * 2)))
+    snmp_packet=$(echo -n "$snmp_packet" | cut -c$((5 + length * 2))-)
+  
+    #Get Security Parameters
+    length_hex=$(echo -n "$snmp_packet" | cut -c3-4)
+    length=$(hex2dec $length_hex)
+    snmp_Sec_Params=$(echo -n "$snmp_packet" | cut -c1-$((4 + length * 2)))
 
-    while [ -n "$snmpMsg" ]; do
-      tag=$(echo "$snmpMsg" | cut -c1-2)
-      length_hex=$(echo "$snmpMsg" | cut -c3-4)
-      length=$((16#$length_hex))
-      field=$(echo "$snmpMsg" | cut -c1-$((4 + length * 2)))
+    #Get SNMP PDU
+    snmp_pdu=$(echo -n "$snmp_packet" | cut -c$((5 + length * 2))-)
+ 
+    #echo "DEBUG: snmp_Sec_Params = $snmp_Sec_Params"
+    
+    #Message Global Data is seqence so we can remove first 2bytes(sequence and length, which is 4chars)
+    snmp_Msg_Glob_Data=$(echo -n "$snmp_Msg_Glob_Data" | cut -c5-)
+    #It is in BER encoding so we can split it into fields
+    snmp_Msg_Glob_Data=$(BER2csv $snmp_Msg_Glob_Data)
 
-      printf "%s," "$field"
+    #Security Parameters is string which is nested sequence so we can remove first 4bytes(2 string and lengt, 2 sequence and length, which is 8charactes)
+    snmp_Sec_Params=$(echo -n "$snmp_Sec_Params" | cut -c9-)
+    #It is in BER encoding so we can split it into fields
+    snmp_Sec_Params=$(BER2csv $snmp_Sec_Params)
 
-      snmpMsg=$(echo "$snmpMsg" | cut -c$((5 + length * 2))-)
-    done
-    printf "\n"  # New line for each parsed message
-  }
+    #echo "$src_ip_hex"
+    #echo "$snmp_version"
+    #echo "$snmp_Msg_Glob_Data"
+    #echo "$snmp_Sec_Params"
+    #echo "$snmp_pdu"
 
-  echo "$processed_input" | while IFS=, read -r src_ip version snmpMsg; do
-    printf "Source IP: %s, Version: %s, SNMP Message: " "$src_ip" "$version"
-    parse_snmpv3_message "$snmpMsg"
+    echo "$src_ip_hex,$snmp_version,$snmp_Msg_Glob_Data,$snmp_Sec_Params,$snmp_pdu"
   done
 }
-
-# Capture packets and pipe them through the translateSNMPv3 function
-#tcpdump -vvv -x udp port 162 | translateSNMPv3
-
 
 #DOC: USAGE TIPS:
 #DOC: 
@@ -509,3 +571,4 @@ translateSNMPv3() {
 #20230622,ADDED: getSnmptrapFunctionsVersion - Print snmptrapFunctions version 
 #20230815,ADDED: listSNMPVariables - lists SNMP variables from an SNMP trap log file
 #20230906,ADDED: USAGE TIPS, USE CASE 1 in DOC comments
+#20250126,ADDED: translateSNMPv3 and BER2csv - BER2csv is currently "hiden" for user_profile help

@@ -6,7 +6,7 @@
 
 #Variables:
 libipAuthor='Jiri Kindl'
-libipVersion='20240929'
+libipVersion='20250125'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: libip
@@ -233,6 +233,52 @@ bin2dec() {
     done
     echo $decimal
     return 0
+}
+
+#DOC: hex2dec HEX_STRING
+#DOC:   NAME
+#DOC:     hex2dec - converts a hexadecimal string to a decimal number
+#DOC:   SYNOPSIS
+#DOC:     hex2dec HEX_STRING
+#DOC:   DESCRIPTION
+#DOC:     Accepts a hexadecimal string as a required argument and returns the corresponding decimal number.
+#DOC:   EXAMPLES
+#DOC:     hex2dec 1A
+#DOC:     Output: 26
+#DOC: 
+hex2dec() {
+    hex_number="$1"
+    dec_number=0
+    length=$(echo -n "$hex_number" | wc -c)
+    
+    i=0
+    while [ $i -lt $length ]; do
+        digit=$(echo "$hex_number" | cut -c$((i + 1)))
+        
+        case $digit in
+            0) value=0 ;;
+            1) value=1 ;;
+            2) value=2 ;;
+            3) value=3 ;;
+            4) value=4 ;;
+            5) value=5 ;;
+            6) value=6 ;;
+            7) value=7 ;;
+            8) value=8 ;;
+            9) value=9 ;;
+            a | A) value=10 ;;
+            b | B) value=11 ;;
+            c | C) value=12 ;;
+            d | D) value=13 ;;
+            e | E) value=14 ;;
+            f | F) value=15 ;;
+        esac
+        
+        dec_number=$((dec_number * 16 + value))
+        i=$((i + 1))
+    done
+
+    echo "$dec_number"
 }
 
 #DOC: ip2bin IP
@@ -594,3 +640,4 @@ isIPInRange() {
 #20230605,UPDATED: function definitions removed space between functionName and () to support the help system
 #20230622,ADDED: getLibipVersion
 #20240929,ADDED: hex2ip
+#20250125,ADDED: hex2dec
