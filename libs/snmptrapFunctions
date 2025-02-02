@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20230906'
+snmptrapFuncVersion='20250127'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -370,9 +370,11 @@ BER2csv() {
 #DOC:   EXAMPLES
 #DOC:     # Read from a pcap file
 #DOC:     tcpdump -X -r SNMPv3.cap | translateSNMPv3
-#DOC:     # Live capture with a filter (e.g., port 161 for SNMP)
-#DOC:     tcpdump -X port 161 | translateSNMPv3
-#DOC:     Output: SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Engine Time,Authoritative Engine Time,Username,Authentication Parameters,Privacy Parameters,SNMP PDU
+#DOC:     # Live capture with a filter (e.g., port 162 for SNMP)
+#DOC:     tcpdump -X port 162 | translateSNMPv3
+#DOC:     Output: SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Authoritative Engine Time,Username,Hash Algorytm,Authentication Parameters,Privacy Parameters,SNMP PDU
+#DOC:     TIP: To get most important data in nice readable table use:
+#DOC:     tcpdump -X -r SNMPv3.cap | translateSNMPv3| cut -d, -f1,7,10,11 |column -s, -t
 #DOC: 
 translateSNMPv3() {
   input=$(cat)  # Read all input from the pipe
@@ -442,11 +444,6 @@ translateSNMPv3() {
   #   01 | Length (1 byte)
   #   01 | Engine Boots count (1)
   
-  #   Engine Time: 020101
-  #   02 | INTEGER
-  #   01 | Length (1 byte)
-  #   01 | Engine Time (1)
-  
   #   Authoritative Engine Time: 020409ce46a6
   #   02 | OCTET STRING
   #   04 | Length (4 bytes)
@@ -479,7 +476,7 @@ translateSNMPv3() {
   processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' )
   
   #Print CSV header
-  echo "SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Engine Time,Authoritative Engine Time,Username,Authentication Parameters,Privacy Parameters,SNMP PDU"
+  echo "SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Authoritative Engine Time,Username,Hash Algorytm,Authentication Parameters,Privacy Parameters,SNMP PDU"
 
   for packet in $processed_input 
   do
@@ -509,19 +506,55 @@ translateSNMPv3() {
     snmp_Msg_Glob_Data=$(echo -n "$snmp_Msg_Glob_Data" | cut -c5-)
     #It is in BER encoding so we can split it into fields
     snmp_Msg_Glob_Data=$(BER2csv $snmp_Msg_Glob_Data)
+    #Remove type and length, and first 2bytes replec with 0x as it's EnigneID in hex format
+    snmp_Msg_Glob_Data=$(echo -n "$snmp_Msg_Glob_Data" |sed 's/,..../,/g'| sed 's/^....//')
 
     #Security Parameters is string which is nested sequence so we can remove first 4bytes(2 string and lengt, 2 sequence and length, which is 8charactes)
     snmp_Sec_Params=$(echo -n "$snmp_Sec_Params" | cut -c9-)
     #It is in BER encoding so we can split it into fields
     snmp_Sec_Params=$(BER2csv $snmp_Sec_Params)
+    
+    #echo "DEBUG: snmp_Sec_Params=$snmp_Sec_Params"
+    
+    #Get lenght of Authentication_Parameters in hex cause we can use it to figure the HASH algorythm used as per rfc7630
+    #12 octets	0x0C	16	HMAC-MD5-96	  md5
+    #12 octets	0x0C	20	HMAC-SHA-96	  sha
+    #16 octets	0x10	28	HMAC-SHA-224	sha224
+    #24 octets	0x18	32	HMAC-SHA-256	sha256
+    #32 octets	0x20	48	HMAC-SHA-384	sha384
+    #48 octets	0x30	64	HMAC-SHA-512	sha512
+    Auth_Param_len_HEX=$(echo -n "$snmp_Sec_Params"| cut -d, -f5 | cut -c3,4)
+    
+    case $Auth_Param_len_HEX in
+      '0c') hash_algorythm='md5/sha' ;;
+      '10') hash_algorythm='sha224' ;;
+      '18') hash_algorythm='sha256' ;;
+      '20') hash_algorythm='sha384' ;;
+      '30') hash_algorythm='sha512' ;;
+      *) hash_algorythm="Unknown($Auth_Param_len_HEX)" ;;
+    esac
 
-    #echo "$src_ip_hex"
-    #echo "$snmp_version"
-    #echo "$snmp_Msg_Glob_Data"
-    #echo "$snmp_Sec_Params"
-    #echo "$snmp_pdu"
+    #Remove type and length
+    snmp_Sec_Params=$(echo -n "$snmp_Sec_Params" |sed 's/,..../,/g'| sed 's/^..../0x/')
+    
+    #Convert Some data to human readable format
+    #------------------------------------------
+    #Convert IP to human readable format
+    src_ip=$(hex2ip $src_ip_hex)
+    #Convert Security Parametrs to human readable format
+    Engine_ID=$(echo -n "$snmp_Sec_Params"| cut -d, -f1)
+    Engine_Boots=$(echo -n "$snmp_Sec_Params"| cut -d, -f2)
+    Authoritative_Engine_Time=$(echo -n "$snmp_Sec_Params"| cut -d, -f3)
+    Username_HEX=$(echo -n "$snmp_Sec_Params"| cut -d, -f4)
+    Authentication_Parameters=$(echo -n "$snmp_Sec_Params"| cut -d, -f5)
+    Privacy_Parameters=$(echo -n "$snmp_Sec_Params"| cut -d, -f6)
+    #Convert Username to ASCII
+    Username_ASCII=$(echo -n "$Username_HEX" | sed 's/\(..\)/\\x\1/g' | xargs -0 printf "%b")
+    #Reassamble snmp_Sec_Params with Human readable data
+    snmp_Sec_Params=$(echo -n "$Engine_ID,$Engine_Boots,$Authoritative_Engine_Time,$Username_ASCII,$hash_algorythm,$Authentication_Parameters,$Privacy_Parameters")
 
-    echo "$src_ip_hex,$snmp_version,$snmp_Msg_Glob_Data,$snmp_Sec_Params,$snmp_pdu"
+
+    echo "$src_ip,$snmp_version,$snmp_Msg_Glob_Data,$snmp_Sec_Params,$snmp_pdu"
   done
 }
 
@@ -572,3 +605,5 @@ translateSNMPv3() {
 #20230815,ADDED: listSNMPVariables - lists SNMP variables from an SNMP trap log file
 #20230906,ADDED: USAGE TIPS, USE CASE 1 in DOC comments
 #20250126,ADDED: translateSNMPv3 and BER2csv - BER2csv is currently "hiden" for user_profile help
+#20250127,UPDATED: translateSNMPv3 - added Human readability
+#20250201,UPDATED: translateSNMPv3 - added Human readable Hash algorythm
