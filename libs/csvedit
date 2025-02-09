@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20231016'
+csveditVersion='20250209'
 
 #Version history at the end of the file:
 
@@ -110,51 +110,239 @@ csvGetContent() {
 #DOC:   NAME
 #DOC:        csvGetFieldIndex - get the index (starting from 1) of a field with a given name (in the header)
 #DOC:   SYNOPSIS
-#DOC:        csvGetFieldIndex FIELDNAME FILE
+#DOC:        csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE
 #DOC:   DESCRIPTION
-#DOC:        csvGetFieldIndex gets the index (starting from 1) of the field with the given FIELDNAME in the header of the FILE. If the file does not exist or is not readable, or if the number of arguments is incorrect, the function will return an error message and a non-zero exit code.
+#DOC:        csvGetFieldIndex gets the index (starting from 1) of the field with the given FIELDNAME in the header of the FILE.
+#DOC:        Function is featuring grep hence you can use basic regex to search for fields 
+#DOC:        Optional switches:
+#DOC:        -a for printing all matching field indexes
+#DOC:        -v for verbose output without cutting the index part
+#DOC:        -o specifying an optional offset (starting index) to start search from, indexed from 1, offset also suport negative indexing (indexing from endof the array)
 #DOC:   EXAMPLE
-#DOC:        csvGetFieldIndex myFieldName myCsvFile.csv
-#DOC:        id,UserName,phone
-#DOC:        returns: 2
+#DOC:        myCsvFile.csv have header as below
+#DOC:        id,UserName,phone:work,phone:personal,email,gender
+#DOC:        
+#DOC:        csvGetFieldIndex UserName myCsvFile.csv
+#DOC:        2
+#DOC:  
+#DOC:        csvGetFieldIndex phone myCsvFile.csv
+#DOC:        3
+#DOC:  
+#DOC:        csvGetFieldIndex -o 4 phone myCsvFile.csv
+#DOC:        4
+#DOC: 
+#DOC:        csvGetFieldIndex -a phone myCsvFile.csv
+#DOC:        3
+#DOC:        4
+#DOC:  
+#DOC:        csvGetFieldIndex -a -v phone myCsvFile.csv
+#DOC:        3:phone:work
+#DOC:        4:phone:personal
+#DOC:  
+#DOC:        csvGetFieldIndex -o -5 phone myCsvFile.csv #Don't print anything there is no phone field 5 filed from end
+#DOC:   
+#DOC:        csvGetFieldIndex -a -v -o -2 phone myCsvFile.csv
+#DOC:        3:phone:work
+#DOC:        4:phone:personal    
+#DOC:  
 #DOC:   EXIT STATUS
 #DOC:        0 if the index is successfully found and printed
 #DOC:        1 if the field name is not found in the header
 #DOC:        10 if the number of arguments is incorrect
 #DOC:        11 if the file does not exist
 #DOC:        12 if the file is not readable
+#DOC:        21 offset is not possitive number
+#DOC:        22 offset is higher then total number of fields
 #DOC: 
 csvGetFieldIndex() {
-  local fieldname=$1
-  local filename=$2
-  local index=0
-  #precheck number of argunents
-  if [ $# -ne 2 ]
-  then
-    echo 'incorrect arguments'
-    return 10
-  fi
-  
-  #file exist and is readable
-  csvCheckFile $filename
-  local fcrv=$?
+    local fieldname=""
+    local filename=""
+    local offset=0  # Default value for the optional offset
+    local all=0     # Flag for printing all matching indexes
+    local verbose=0 # Flag for verbose output
 
-  if [ $fcrv -ne 0 ]
-  then
-    #iniUsage iniGetAllSections
-    return $fcrv
-  fi 
+    # Process arguments
+    while [ "$1" != "" ]; do
+        case $1 in
+            -f | --fieldname )    shift
+                                  fieldname=$1
+                                  ;;
+            -i | --inputfile )    shift
+                                  filename=$1
+                                  ;;
+            -o | --offset )       shift
+                                  offset=$1
+                                  ;;
+            -a | --all )          all=1
+                                  ;;
+            -v | --verbose )      verbose=1
+                                  ;;
+            --help )              echo "Usage: csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE" >&2
+                                  exit 0
+                                  ;;
+            * )
+                if [ -z "$fieldname" ]; then
+                    fieldname=$1
+                elif [ -z "$filename" ]; then
+                    filename=$1
+                else
+                    echo "Usage: csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE" >&2
+                    exit 1
+                fi
+        esac
+        shift
+    done
 
-  
-  for index in $(seq $(head -n 1 $filename | sed 's/[^,]//g' |wc -c))
-  do
-	  if [ "$(head -n 1 $filename|cut -d',' -f$index | sed 's/\r//')" = "$fieldname" ]
-	  then
-		  echo $index
-		  return 0
+    # Precheck number of arguments
+    if [ -z "$fieldname" ] || [ -z "$filename" ]; then
+        echo "ERROR: incorrect arguments" >&2
+        echo "Usage: csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE" >&2
+        return 10
     fi
-  done
-  return 1
+
+    # Precheck offset 
+    if [ $(echo -n "$offset" |grep "^\-*[0-9]\+$" | wc -l) -eq 0 ]; then
+        echo "ERROR: offset must be possitive number" >&2
+        echo "Usage: csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE" >&2
+        return 21
+    fi
+
+    # File existence and readability check
+    csvCheckFile $filename
+    local fcrv=$?
+
+    if [ $fcrv -ne 0 ]; then
+        return $fcrv
+    fi
+
+    # Use csvHeader2Index to get the header to index mapping
+    local indexed_header
+    indexed_header=$(csvHeader2Index "$filename")
+
+    # Calculate the number of fields in the header
+    local total_fields
+    total_fields=$(echo "$indexed_header" | wc -l)
+
+    #To support negative indexes, example like -2 is second from end
+    if [ $offset -lt 0 ]; then
+        #we revert the list 
+        indexed_header=$(csvHeader2Index "$filename"|sort -nr)
+        #and remove minus from offset
+        offset=$(echo -n "$offset"|cut -c2-)
+        #from now on it's just normal search with offset
+    fi
+
+    #Check if offset is not bigger then number of fields
+    if [ $offset -gt $total_fields ]; then
+        echo "ERROR: offset cannot be than bigger number of fields, number of fields in header: $total_fields" >&2
+        echo "Usage: csvGetFieldIndex [av] [-o offsetIndex] FIELDNAME FILE" >&2
+        return 22
+    fi
+    
+    # Calculate the starting line considering the offset
+    local starting_line
+    if [ $offset -gt 1 ]; then
+        starting_line=$(expr $total_fields - $offset)
+        starting_line=$(expr $starting_line + 1)
+    else
+        starting_line=$total_fields
+    fi
+
+    # Limit output based on the starting line
+    local filtered_header
+    filtered_header=$(echo "$indexed_header" | tail -n $starting_line)
+
+    # Find the field index/indices
+    local result
+    if [ $all -eq 1 ]; then
+        if [ $verbose -eq 1 ]; then
+            result=$(echo "$filtered_header" | grep "$fieldname")
+        else
+            result=$(echo "$filtered_header" | grep "$fieldname" | cut -d: -f1)
+        fi
+    else
+        if [ $verbose -eq 1 ]; then
+            result=$(echo "$filtered_header" | grep "$fieldname" | head -n 1)
+        else
+            result=$(echo "$filtered_header" | grep "$fieldname" | head -n 1 | cut -d: -f1)
+        fi
+    fi
+
+    if [ -n "$result" ]; then
+        # Output the result
+        echo "$result"
+        return 0
+    else
+        return 1
+    fi
+}
+
+#DOC: csvHeader2Index FILE
+#DOC:   NAME
+#DOC:        csvHeader2Index - get the index mapping of each header field in a CSV file
+#DOC:   SYNOPSIS
+#DOC:        csvHeader2Index FILE
+#DOC:   DESCRIPTION
+#DOC:        csvHeader2Index gets the index (starting from 1) of each field in the header of the FILE and prints them along with the field names. If the file does not exist or is not readable, the function will return an error message and a non-zero exit code.
+#DOC:   EXAMPLE
+#DOC:        csvHeader2Index myCsvFile.csv
+#DOC:        1:id
+#DOC:        2:UserName
+#DOC:        3:phone
+#DOC:   EXIT STATUS
+#DOC:        0 if the indices are successfully found and printed
+#DOC:        10 if the number of arguments is incorrect
+#DOC:        11 if the file does not exist
+#DOC:        12 if the file is not readable
+#DOC: 
+csvHeader2Index() {
+    local filename=""
+
+    # Process arguments
+    while [ "$1" != "" ]; do
+        case $1 in
+            -i | --inputfile )    shift
+                                  filename=$1
+                                  ;;
+            --help )              csvHeader2Index_usage
+                                  exit 0
+                                  ;;
+            * )
+                if [ -z "$filename" ]; then
+                    filename=$1
+                else
+                    echo "Usage: csvHeader2Index FILE" >&2
+                    exit 1
+                fi
+        esac
+        shift
+    done
+
+    # Precheck number of arguments
+    if [ -z "$filename" ]; then
+        echo "ERROR: incorrect arguments" >&2
+        echo "Usage: csvHeader2Index FILE" >&2
+        return 10
+    fi
+
+    # File existence and readability check
+    csvCheckFile $filename
+    local fcrv=$?
+
+    if [ $fcrv -ne 0 ]; then
+        return $fcrv
+    fi
+
+    # Read the header line once and transform commas to newlines
+    local header
+    header=$(head -n 1 "$filename" | tr ',' '\n')
+
+    # Print each header field with its corresponding index
+    local index=1
+    while IFS= read -r line; do
+        echo "$index:$line"
+        index=$(expr $index + 1)
+    done <<< "$header"
 }
 
 #DOC: csvFilterByField FIELD VALUE FILE
@@ -387,3 +575,4 @@ csvFlattenMultiLineFields() {
 #20230716,ADDED: csvFlattenMultiLineFields, CHANGED: containsMultiLinesFields to csvContainsMultiLinesFields
 #20230722,UPDATED: function csvContainsMultiLinesFields add verbose and more verbose mode
 #20231016,CORRECTED: csvContainsMultiLinesFields help corrected
+#20250209,UPDATED: csvGetFieldIndex - added options -a -v -o (all,verbose,offset) and used grep instaed of simple equal;ADDED: csvHeader2Index which print fields one pre lined with number, in forma line#:fieldName

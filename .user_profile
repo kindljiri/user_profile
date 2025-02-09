@@ -149,5 +149,10 @@ echo "User profile loading libraries..."
 . ~/user_profile/libs/htmlDataMining
 . ~/user_profile/libs/convertDataLib
 
+# Making scripts exacutable, adding ~/user_profile/scripts into PATH
+chmod +x ~/user_profile/scripts/*
+PATH="$PATH:~/user_profile/scripts"
+export PATH
+
 echo "User profile loaded"
 echo "For more information, help and documentation run: profileHelp"
