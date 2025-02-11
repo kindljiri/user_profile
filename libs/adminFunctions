@@ -598,7 +598,7 @@ getPartitionSize() {
 
     df_record=$(df -k "$1" 2>&1 | sed -n '2p' | sed 's/[ \t]\+/ /g')
 
-    if [ -n "$df_record" ]; then
+    if [ -z "$df_record" ]; then
         echo "Partition $1 does not exist" >&2
         return 1
     fi
