@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250115"
+adminFuncVersion="20250210"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -547,11 +547,11 @@ alias getCPUSpeed="cat /proc/cpuinfo | grep 'cpu MHz'|tail -1|sed 's/[ \t]\+/ /g
 
 #DOC: getMemoryTotal
 #DOC:   NAME
-#DOC:     getCPUSpeed - get the CPU speed in MHz
+#DOC:     getMemoryTotal - Get total physical memory (RAM)
 #DOC:   SYNOPSIS
-#DOC:     getCPUSpeed
+#DOC:     getMemoryTotal
 #DOC:   DESCRIPTION
-#DOC:     The getCPUSpeed function returns the CPU speed in MHz by reading the 'cpu MHz' entry from /proc/cpuinfo.
+#DOC:     The getMemoryTotal function returns MemTotal entry from /proc/cpuinfo.
 #DOC: 
 alias getMemoryTotal="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'| cut -d' ' -f2"
 
@@ -593,17 +593,26 @@ untarAll() {
 getPartitionSize() {
     if [ $# -eq 0 ]; then
         echo "Usage: getPartitionSize mountpoint" >&2
-        return 1
+        return 10
     fi
 
-    if ! df -k "$1" >/dev/null 2>&1; then
+    df_record=$(df -k "$1" 2>&1 | sed -n '2p' | sed 's/[ \t]\+/ /g')
+
+    if [ -n "$df_record" ]; then
         echo "Partition $1 does not exist" >&2
         return 1
     fi
 
-    df -k "$1" | sed -n '2p' | sed 's/[ \t]\+/ /g' | cut -d ' ' -f 2
-
-    return 0
+    mp=$(echo -n "$df_record" | cut -d' ' -f6)
+    
+    if [ "$mp" = "$1" ]; then
+        echo -n "$df_record" | cut -d ' ' -f 2
+        return 0
+    else
+        echo "Partition $1 does not exist" >&2
+        return 1
+    fi
+    
 }
 
 #DOC: checkFolderOwnership
@@ -643,3 +652,4 @@ checkFolderOwnership() {
 #20230621,ADDED: untarAll alias
 #20230622,ADDED: getAdminFunctionsVersion - Print textEditAliases version 
 #20250115,ADDED: +x, ...(dots)
+#20250210,CORRECTED: getMemoryTotal DOC comments, CORRECTED: getPartitionSize to match exactly on patrition
