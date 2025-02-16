@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250209'
+csveditVersion='20250216'
 
 #Version history at the end of the file:
 
@@ -105,6 +105,181 @@ csvGetContent() {
   sed '1 d' $filename
   return 0
 }
+
+#DOC: csvContainsUnbalancedQuotes [-v] FILE
+#DOC:   NAME
+#DOC:        csvContainsUnbalancedQuotes - check if a CSV file contains unbalanced quotes
+#DOC:   SYNOPSIS
+#DOC:        csvContainsUnbalancedQuotes [-v] FILE
+#DOC:   DESCRIPTION
+#DOC:        csvContainsUnbalancedQuotes checks if a CSV file contains unbalanced quotes.
+#DOC:        Optional switches:
+#DOC:        -v for verbose output, which tells which lines contain unbalanced quotes
+#DOC:   EXAMPLE
+#DOC:        csvContainsUnbalancedQuotes myCsvFile.csv
+#DOC:        csvContainsUnbalancedQuotes -v myCsvFile.csv
+#DOC:   EXIT STATUS
+#DOC:        0 if the file contains balanced quotes
+#DOC:        1 if the file contains unbalanced quotes
+#DOC:        2 if there are argument errors
+#DOC:        3 if there are file-related errors
+csvContainsUnbalancedQuotes() {
+  local verbose=0
+  local filename
+
+  # Process arguments
+  while [ "$1" != "" ]; do
+    case $1 in
+      -v | --verbose )
+        verbose=1
+        ;;
+      --help )
+        echo "Usage: csvContainsUnbalancedQuotes [-v] FILE" >&2
+        exit 0
+        ;;
+      * )
+        if [ -z "$filename" ]; then
+          filename=$1
+        else
+          echo "Usage: csvContainsUnbalancedQuotes [-v] FILE" >&2
+          return 2  # Argument error
+        fi
+    esac
+    shift
+  done
+
+  if [ -z "$filename" ]; then
+    echo "Usage: csvContainsUnbalancedQuotes [-v] FILE" >&2
+    return 2  # Argument error
+  fi
+
+  if [ ! -f "$filename" ]; then
+    [ $verbose -eq 1 ] && echo "File not found!" >&2
+    return 3  # File error
+  fi
+  if [ ! -r "$filename" ]; then
+    [ $verbose -eq 1 ] && echo "File is not readable!" >&2
+    return 3  # File error
+  fi
+
+  local line_number=0
+  local unbalanced=0
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_number=$((line_number + 1))
+    local cleaned_line=$(echo "$line" | tr -c '\\,"' ' ' | sed 's/\\\"/  /g')
+    local qc=$(echo "$cleaned_line" | fold -w1 | grep -o '"' | wc -l)
+    if [ $(expr $qc % 2) -ne 0 ]; then
+      unbalanced=1
+      [ $verbose -eq 1 ] && echo "Unbalanced quotes in line $line_number: $line" >&2
+    fi
+  done < "$filename"
+
+  return $unbalanced
+}
+
+#DOC: csvLine2Fields [-n] LINE
+#DOC:   NAME
+#DOC:        csvLine2Fields - split a CSV line into individual fields, with each field on a new line
+#DOC:   SYNOPSIS
+#DOC:        csvLine2Fields [-n] LINE
+#DOC:   DESCRIPTION
+#DOC:        csvLine2Fields processes a single CSV line, handles quoted fields, and prints each field on a new line.
+#DOC:        Optional switches:
+#DOC:        -n to prepend each field with its number
+#DOC:   EXAMPLE
+#DOC:        line='Smith, "123 Elm St., Springfield", 35, "Life is \"what\" happens, when you''re busy making other plans.", Enjoys "coding, hiking", and "reading"'
+#DOC:        csvLine2Fields "$line"
+#DOC:        csvLine2Fields -n "$line"
+#DOC:   EXIT STATUS
+#DOC:        0 if the line is successfully processed and fields are printed
+#DOC:        1 if there are argument errors
+csvLine2Fields() {
+  local numbered=0
+  local csvline=''
+
+  # Process arguments
+  while [ "$1" != "" ]; do
+    case $1 in
+      -n )
+        numbered=1
+        ;;
+      --help )
+        echo "Usage: csvLine2Fields [-n] LINE" >&2
+        exit 0
+        ;;
+      * )
+        if [ -z "$csvline" ]; then
+          csvline="$1"
+        else
+          echo "Usage: csvLine2Fields [-n] LINE" >&2
+          return 1  # Argument error
+        fi
+    esac
+    shift
+  done
+
+  # Preprocessing
+  local preprocessed=$(echo "$csvline" | tr -c '\\,"' ' ' | sed 's/\\\"/  /g' | fold -w1 | grep -nv " ")
+  
+  # Check if there are any quotes, if not we can optimize and just replace , with \n
+  if [ $(echo "$preprocessed" | grep '"' | wc -l) -eq 0 ]; then
+    if [ $numbered -eq 1 ]; then
+      echo "$csvline" | tr ',' '\n' | nl -s':'
+    else
+      echo "$csvline" | tr ',' '\n'
+    fi
+    return 0
+  fi
+
+  # Initialize state variables
+  local state="FIELD"
+  local field_starts_index=1
+  local field_end_index=0
+  local field_number=1
+
+  # Loop through preprocessed input
+  for entry in $preprocessed; do
+    index=$(echo "$entry" | cut -d':' -f1)
+    char=$(echo "$entry" | cut -d':' -f2)
+  
+    case $state in
+      FIELD)
+        if [ "$char" == '"' ]; then
+          state="QUOTES"
+        elif [ "$char" == ',' ]; then
+          field_end_index=$(expr $index - 1)
+          field=$(echo "$csvline" | cut -c${field_starts_index}-${field_end_index})
+          if [ $numbered -eq 1 ]; then
+            echo "$field_number:$field"
+          else
+            echo "$field"
+          fi
+          field_starts_index=$(expr $index + 1)
+          field_number=$(expr $field_number + 1)
+        fi
+        ;;
+    
+      QUOTES)
+        if [ "$char" == '"' ]; then
+          state="FIELD"
+        fi
+        ;;
+    esac
+  done
+
+  # Print the last field if there's any content left
+  field=$(echo "$csvline" | cut -c${field_starts_index}-)
+  if [ $numbered -eq 1 ]; then
+    echo "$field_number:$field"
+  else
+    echo "$field"
+  fi
+
+  return 0
+}
+
+
 
 #DOC: csvGetFieldIndex FIELDNAME FILE
 #DOC:   NAME
@@ -576,3 +751,4 @@ csvFlattenMultiLineFields() {
 #20230722,UPDATED: function csvContainsMultiLinesFields add verbose and more verbose mode
 #20231016,CORRECTED: csvContainsMultiLinesFields help corrected
 #20250209,UPDATED: csvGetFieldIndex - added options -a -v -o (all,verbose,offset) and used grep instaed of simple equal;ADDED: csvHeader2Index which print fields one pre lined with number, in forma line#:fieldName
+#20250216,ADDED: csvLine2Fields - converts line to fields, one field per line
