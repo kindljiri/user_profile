@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250210"
+adminFuncVersion="20250306"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -639,6 +639,85 @@ checkFolderOwnership() {
   return $return_value
 }
 
+#DOC: restartService
+#DOC:   NAME
+#DOC:     restartService - Restart a specified service(using sudo systemctl) and display its status
+#DOC:   SYNOPSIS
+#DOC:     restartService SERVICE_NAME
+#DOC:   DESCRIPTION
+#DOC:     The restartService function takes one argument, SERVICE_NAME.
+#DOC:     It restarts the specified service using systemctl and then displays its status.
+#DOC:     This function requires sudo privileges to restart the service.
+#DOC: 
+restartService() {
+  if [ -z "$1" ]; then
+    echo "Error: No service name provided." >&2
+    echo "Usage: restartService SERVICE_NAME" >&2
+    return 1
+  fi
+
+  if ! systemctl show -p LoadState --value "$1" &> /dev/null; then
+    echo "Error: Service '$1' does not exist or is not loaded." >&2
+    return 1
+  fi
+
+  sudo systemctl restart "$1"
+  systemctl status "$1"
+}
+
+#DOC: startService
+#DOC:   NAME
+#DOC:     startService - Start a specified service(using sudo systemctl) and display its status
+#DOC:   SYNOPSIS
+#DOC:     startService SERVICE_NAME
+#DOC:   DESCRIPTION
+#DOC:     The startService function takes one argument, SERVICE_NAME.
+#DOC:     It starts the specified service using systemctl and then displays its status.
+#DOC:     This function requires sudo privileges to start the service.
+#DOC: 
+startService() {
+  if [ -z "$1" ]; then
+    echo "Error: No service name provided." >&2
+    echo "Usage: startService SERVICE_NAME" >&2
+    return 1
+  fi
+
+  if ! systemctl show -p LoadState --value "$1" &> /dev/null; then
+    echo "Error: Service '$1' does not exist or is not loaded." >&2
+    return 1
+  fi
+
+  sudo systemctl start "$1"
+  systemctl status "$1"
+}
+
+#DOC: stopService
+#DOC:   NAME
+#DOC:     stopService - Stop a specified service(using sudo systemctl) and display its status
+#DOC:   SYNOPSIS
+#DOC:     stopService SERVICE_NAME
+#DOC:   DESCRIPTION
+#DOC:     The stopService function takes one argument, SERVICE_NAME.
+#DOC:     It stops the specified service using systemctl and then displays its status.
+#DOC:     This function requires sudo privileges to stop the service.
+#DOC: 
+stopService() {
+  if [ -z "$1" ]; then
+    echo "Error: No service name provided." >&2
+    echo "Usage: stopService SERVICE_NAME" >&2
+    return 1
+  fi
+
+  if ! systemctl show -p LoadState --value "$1" &> /dev/null; then
+    echo "Error: Service '$1' does not exist or is not loaded." >&2
+    return 1
+  fi
+
+  sudo systemctl stop "$1"
+  systemctl status "$1"
+}
+
+
 #VERSION HISTORY:
 #20230418,INIT Version
 #20230420,ADDED: Addition DOC Comments to support help system
@@ -653,3 +732,4 @@ checkFolderOwnership() {
 #20230622,ADDED: getAdminFunctionsVersion - Print textEditAliases version 
 #20250115,ADDED: +x, ...(dots)
 #20250210,CORRECTED: getMemoryTotal DOC comments, CORRECTED: getPartitionSize to match exactly on patrition
+#20250306,ADDED: added functions restartService,startService,stopService to restart services with sudo
