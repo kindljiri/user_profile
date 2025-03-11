@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250306"
+adminFuncVersion="20250310"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -661,6 +661,7 @@ restartService() {
     return 1
   fi
 
+  echo "Restarting $1 ..."
   sudo systemctl restart "$1"
   systemctl status "$1"
 }
@@ -686,7 +687,7 @@ startService() {
     echo "Error: Service '$1' does not exist or is not loaded." >&2
     return 1
   fi
-
+  echo "Starting $1 ..."
   sudo systemctl start "$1"
   systemctl status "$1"
 }
@@ -712,7 +713,7 @@ stopService() {
     echo "Error: Service '$1' does not exist or is not loaded." >&2
     return 1
   fi
-
+  echo "Stopping $1 ..."
   sudo systemctl stop "$1"
   systemctl status "$1"
 }
@@ -733,3 +734,4 @@ stopService() {
 #20250115,ADDED: +x, ...(dots)
 #20250210,CORRECTED: getMemoryTotal DOC comments, CORRECTED: getPartitionSize to match exactly on patrition
 #20250306,ADDED: added functions restartService,startService,stopService to restart services with sudo
+#20250310,UPDATED: functions restartService,startService,stopService with verbosity
