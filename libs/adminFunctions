@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250310"
+adminFuncVersion="20250312"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -639,6 +639,12 @@ checkFolderOwnership() {
   return $return_value
 }
 
+#############################
+#                           #
+# sudo fuctions and aliases #
+#                           #
+#############################
+
 #DOC: restartService
 #DOC:   NAME
 #DOC:     restartService - Restart a specified service(using sudo systemctl) and display its status
@@ -718,6 +724,23 @@ stopService() {
   systemctl status "$1"
 }
 
+#DOC: fixHomeOwnership
+#DOC:   NAME
+#DOC:     fixHomeOwnership - Change ownership of home directory to the current user and group
+#DOC:   SYNOPSIS
+#DOC:     fixHomeOwnership
+#DOC:   DESCRIPTION
+#DOC:     The fixHomeOwnership function does not take any arguments.
+#DOC:     It changes the ownership of the current user's home directory and all its contents
+#DOC:     to the current user and group using the chown command.
+#DOC:     This function requires sudo privileges to change ownership.
+#DOC: 
+fixHomeOwnership() {
+  local user=$(id -un)
+  local group=$(id -gn)
+  sudo chown -R ${user}:${group} ~
+}
+
 
 #VERSION HISTORY:
 #20230418,INIT Version
@@ -735,3 +758,4 @@ stopService() {
 #20250210,CORRECTED: getMemoryTotal DOC comments, CORRECTED: getPartitionSize to match exactly on patrition
 #20250306,ADDED: added functions restartService,startService,stopService to restart services with sudo
 #20250310,UPDATED: functions restartService,startService,stopService with verbosity
+#20250312,ADDED: function fixHomeOwnership - Change ownership of home directory to the current user and group
