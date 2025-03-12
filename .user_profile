@@ -148,6 +148,7 @@ echo "User profile loading libraries..."
 . ~/user_profile/libs/adminFunctions
 . ~/user_profile/libs/htmlDataMining
 . ~/user_profile/libs/convertDataLib
+. ~/user_profile/libs/compareLists
 
 # Making scripts exacutable, adding ~/user_profile/scripts into PATH
 chmod +x ~/user_profile/scripts/*
