@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250312"
+adminFuncVersion="20250315"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -639,6 +639,62 @@ checkFolderOwnership() {
   return $return_value
 }
 
+#DOC: getProcessENV
+#DOC:   NAME
+#DOC:     getProcessENV - Retrieve and display the environment variables of a specified process
+#DOC:   SYNOPSIS
+#DOC:     getProcessENV PID
+#DOC:   DESCRIPTION
+#DOC:     The getProcessENV function takes one argument, PID.
+#DOC:     It retrieves and displays the environment variables of the process with the specified PID.
+#DOC:   RETURN CODES
+#DOC:     0 - Success: Environment variables were successfully retrieved and displayed.
+#DOC:     1 - Error: No process ID provided.
+#DOC:     2 - Error: Invalid process ID (PID must be a positive integer).
+#DOC:     3 - Error: Process with the specified PID does not exist.
+#DOC:     4 - Error: Environment file for the specified PID is not readable.
+#DOC:   USAGE
+#DOC:     getProcessENV <PID>
+#DOC:     Example: getProcessENV 1234
+#DOC:   REQUIREMENTS
+#DOC:     - The function must be executed on a system with the /proc filesystem (e.g., Linux).
+#DOC:     - Proper permissions are needed to read the /proc/PID/environ file.
+#DOC: 
+getProcessENV() {
+  local pid=$1
+
+  # Check if a process ID (pid) is provided
+  if [ -z "$pid" ]; then
+    echo "Error: No process ID provided." >&2
+    echo "Usage: getProcessENV <PID>" >&2
+    return 1  # Error Code 1: Missing PID
+  fi
+
+  # Check if the provided PID is a positive integer
+  case "$pid" in
+    *[!0-9]* | '') 
+      echo "Error: Invalid process ID. PID must be a positive integer." >&2
+      return 2  # Error Code 2: Invalid PID
+      ;;
+  esac
+
+  # Check if the process with the given PID exists
+  if [ ! -d "/proc/$pid" ]; then
+    echo "Error: Process with PID $pid does not exist." >&2
+    return 3  # Error Code 3: Process does not exist
+  fi
+
+  # Check if the environment file is readable
+  if [ ! -r "/proc/$pid/environ" ]; then
+    echo "Error: Environment file for PID $pid is not readable." >&2
+    return 4  # Error Code 4: File not readable
+  fi
+
+  # If all checks pass, display the process environment variables
+  cat /proc/"$pid"/environ | tr '\0' '\n'
+}
+
+
 #############################
 #                           #
 # sudo fuctions and aliases #
@@ -759,3 +815,4 @@ fixHomeOwnership() {
 #20250306,ADDED: added functions restartService,startService,stopService to restart services with sudo
 #20250310,UPDATED: functions restartService,startService,stopService with verbosity
 #20250312,ADDED: function fixHomeOwnership - Change ownership of home directory to the current user and group
+#20250315,ADDED: function getProcessENV - Retrieve and display the environment variables of a specified process
