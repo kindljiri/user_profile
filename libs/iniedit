@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20240603'
+inieditVersion='20250327'
 
 #Version history at the end of the file:
 
@@ -826,11 +826,6 @@ iniFindValueKey() {
   local value=$2
   local filename=$3
   local usage="iniFindValueKey myKey myValue myInifile.ini"
-  local LINE
-  local section
-  local PREV_LINE=""
-  local tmpfile="/tmp/.tmp_iniedit_$(echo $filename|rev|cut -d'/' -f1|rev)_$(date +%s)"
-  local tmpfileFindValueKey="/tmp/.tmp_iniedit_FindValueKey_$(echo $filename|rev|cut -d'/' -f1|rev)_$(date +%s)"
 
   #precheck number of argunents
   if [ $# -ne 3 ]
@@ -852,25 +847,45 @@ iniFindValueKey() {
 
   #function code start
 
-  grep -E "$key[ \t]*=[ \t]*$value$|^\[.*\]$" $filename > $tmpfile
-  while read LINE
-  do
-    if [ $(echo $LINE | grep "^\[.*\]$" |wc -l) -gt 0 ]
-    then
-      section=$LINE
-    else
-      echo $section >> $tmpfileFindValueKey
-    fi
-  done < $tmpfile
+  grep -E "$key[ \t]*=[ \t]*$value$|^\[.*\]$" $filename | grep -B 1 "^$key[ \t]*=[ \t]*" | grep -v "^$key[ \t]*=[ \t]*"
 
-  cat $tmpfileFindValueKey | sort | uniq
+}
 
-  #clean up
-  if [ $INIEDITDEBUG = 'FALSE' ]
+#DOC: iniFindKey 
+#DOC:   NAME
+#DOC:     iniFindKey - Print out all sections in which the key is present
+#DOC:   SYNOPSIS
+#DOC:     iniFindKey KEY FILENAME
+#DOC:   DESCRIPTION
+#DOC:     This function prints out all sections in which the specified key is present in the specified INI file.
+#DOC:   EXAMPLES
+#DOC:     iniFindKey myKey myIniFile.ini
+#DOC: 
+iniFindKey(){
+  local key=$1
+  local filename=$3
+  local usage="iniFindKey myKey myInifile.ini"
+ 
+  #precheck number of argunents
+  if [ $# -ne 2 ]
   then
-    rm -f $tmpfile
-    rm -f $tmpfileFindValueKey
+    echo "Error: incorrect number of arguments, arguments given: $@" >&2
+    echo "Usage: $usage" >&2
+    return 10
   fi
+
+  #file exist and is readable
+  error_message=$(iniCheckFile $filename)
+  fcrv=$?
+
+  if [ $fcrv -ne 0 ]
+  then
+    echo "Error: $error_message" >&2
+    echo "Usage: $usage" >&2
+  fi
+
+  #function code start
+  grep -E "^$key[ \t]*=[ \t]*|^\[.*\]$" $filename | grep -B 1 "^$key[ \t]*=[ \t]*" | grep -v "^$key[ \t]*=[ \t]*"
 }
 
 #DOC: iniSerialize
@@ -1287,3 +1302,4 @@ iniIdentifyUpdates() {
 #20240618,UPDATED: iniListSections added -n option to give the line number of section, this allows further optimization in iniGetSectionContent
 #20240619,UPDATED: iniGetSectionContent optimization using iniListSections -n and using line numbers to feature head and tail
 #20240626,UPDATED: iniUpdate optimization using iniGetSectionContent for notexisting sections
+#20250327,ADDED: iniFindKey; UPDATED: iniFindValueKey - optimized, chain of greps instead of while loops
