@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20250327'
+inieditVersion='20250328'
 
 #Version history at the end of the file:
 
@@ -863,7 +863,7 @@ iniFindValueKey() {
 #DOC: 
 iniFindKey(){
   local key=$1
-  local filename=$3
+  local filename=$2
   local usage="iniFindKey myKey myInifile.ini"
  
   #precheck number of argunents
@@ -1303,3 +1303,4 @@ iniIdentifyUpdates() {
 #20240619,UPDATED: iniGetSectionContent optimization using iniListSections -n and using line numbers to feature head and tail
 #20240626,UPDATED: iniUpdate optimization using iniGetSectionContent for notexisting sections
 #20250327,ADDED: iniFindKey; UPDATED: iniFindValueKey - optimized, chain of greps instead of while loops
+#20250328,CORRECTED: iniFindKey parametr filename was incorrectly mapped
