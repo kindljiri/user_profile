@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250127'
+snmptrapFuncVersion='20250403'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -154,13 +154,21 @@ getSNMPTrapEnterpriseID() {
 
 #DOC: splitLog2IndividualTraps
 #DOC:   NAME
-#DOC:     splitLog2IndividualTraps - split the log file with traps to individual traps
+#DOC:     splitLog2IndividualTraps - split the log file with traps into individual files
 #DOC:   SYNOPSIS
-#DOC:     splitLog2IndividualTraps
+#DOC:     splitLog2IndividualTraps <logfile>
 #DOC:   DESCRIPTION
-#DOC:     This function splits the log file with traps to individual traps, one trap per file, based on timestamp at line beginning. 
-#DOC:     Files are temporarily saved in /tmp and they all start with "trap". 
-#DOC:     The file numbering is not consistent because files not containing traps are removed.
+#DOC:     Splits a log file containing SNMP traps into individual files based on timestamps.
+#DOC:     Each trap file is stored in a temporary directory under `/tmp`, named using 
+#DOC:     the epoch timestamp and detected SNMP version.
+#DOC:     Non-trap files are automatically removed.
+#DOC:   FILE NAMING CONVENTION
+#DOC:     <epoch_timestamp>_<SMI_version>_trapXXX
+#DOC:     Example: `1678891234_SMIv2_trap001`
+#DOC:   NOTES
+#DOC:     - Traps are identified by SNMP format (SMIv1 or SMIv2).
+#DOC:     - Uses `csplit` for splitting log files.
+#DOC:     - Avoids `ls trap*` due to argument limit errors.
 #DOC: 
 splitLog2IndividualTraps() {
   local tmp_trap_folder=$(mktemp -d -t traps.XXX)
@@ -173,14 +181,20 @@ splitLog2IndividualTraps() {
     if [ $(grep "Enterprise Specific Trap" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
     then
       is_trap=1 # yes SMIv1 format
+      smi_version='SMIv1'
     fi
     if [ $(grep "SNMPv2-MIB::snmpTrapOID" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
     then
       is_trap=1 # yes SMIv2 format
+      smi_version='SMIv2'
     fi
     if [ $is_trap -eq 0 ]
     then
       rm -f $tmp_trap_folder/$tmp_trap_file
+    else
+      trap_ts=$(grep -o "^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9]" $tmp_trap_folder/$tmp_trap_file)
+      trap_epoch_ts=$(date -d "$trap_ts" +%s)
+      mv $tmp_trap_folder/$tmp_trap_file $tmp_trap_folder/${trap_epoch_ts}_${smi_version}_$tmp_trap_file
     fi
   done
   echo "$tmp_trap_folder"
@@ -607,3 +621,4 @@ translateSNMPv3() {
 #20250126,ADDED: translateSNMPv3 and BER2csv - BER2csv is currently "hiden" for user_profile help
 #20250127,UPDATED: translateSNMPv3 - added Human readability
 #20250201,UPDATED: translateSNMPv3 - added Human readable Hash algorythm
+#20250403,UPDATED: splitLog2IndividualTraps - changed the file naming convention
