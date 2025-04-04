@@ -200,7 +200,6 @@ splitLog2IndividualTraps() {
   echo "$tmp_trap_folder"
 }
 
-
 #DOC: log2snmptrap
 #DOC:   NAME
 #DOC:     log2snmptrap - convert the file containing one trap into snmptrap command
@@ -352,6 +351,96 @@ listSNMPVariables() {
 
   # Extract SNMP variables from the log file, sort them, and remove duplicates
   grep -o -E "[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*::[a-zA-Z0-9]+(\.[0-9]+)* =" $snmptrapdlog |sed 's/ =//'g | sort | uniq
+}
+
+#!/bin/sh  # POSIX-compliant shebang
+
+#DOC: replaySnmptraps trap_folder [log_file]
+#DOC:   NAME
+#DOC:     replaySnmptraps - replay SNMP traps in correct chronological order with delays
+#DOC:   SYNOPSIS
+#DOC:     replaySnmptraps trap_folder [log_file]
+#DOC:   DESCRIPTION
+#DOC:     This function replays SNMP trap files from a specified folder, preserving their original timing.
+#DOC:     - Traps are sorted by epoch timestamp extracted from filenames.
+#DOC:     - Events are replayed with appropriate delays based on timestamp differences.
+#DOC:     - The default log file is /var/log/snmptrapd.log, but an alternate log file can be specified.
+#DOC:     - Traps are appended to the log file with updated timestamps.
+#DOC:   RETURN VALUES
+#DOC:     1 - Missing required arguments
+#DOC:     2 - Trap folder does not exist
+#DOC:     3 - Log file is not writable
+#DOC:
+replaySnmptraps() {
+
+    if [ $# -lt 1 ]; then
+        echo "Error: Missing required arguments." >&2
+        echo "Usage: replaySnmptraps <trap_folder> [log_file]" >&2
+        return 1
+    fi
+
+    trap_folder="$1"
+    log_file="/var/log/snmptrapd.log"  # Default log file
+
+    # If a second argument is provided, override the default log file
+    if [ -n "$2" ]; then
+        log_file="$2"
+    fi
+
+    # Ensure trap folder exists
+    if [ ! -d "$trap_folder" ]; then
+        echo "Error: Folder '$trap_folder' does not exist." >&2
+        echo "Usage: replaySnmptraps <trap_folder> [log_file]" >&2
+        return 2
+    fi
+
+    # Check if log file is writable
+    if [ ! -w "$log_file" ]; then
+        echo "Error: Cannot write to '$log_file'. Check permissions." >&2
+        echo "Usage: replaySnmptraps <trap_folder> [log_file]" >&2
+        return 3
+    fi
+
+    cd "$trap_folder" || { 
+        echo "Error: Failed to access '$trap_folder'." >&2
+        echo "Usage: replaySnmptraps <trap_folder> [log_file]" >&2
+        return 2
+    }
+
+    # Extract the earliest epoch timestamp for initialization
+    previous_epoch=$(ls | sort -n | head -1 | cut -d_ -f1)
+
+    echo "Starting trap replay from folder: $trap_folder"
+    echo "Writing to log file: $log_file"
+    echo "Processing traps in chronological order..."
+
+    # Sort and loop through trap files
+    for trap_file in $(ls | sort -n); do
+        trap_epoch=$(echo "$trap_file" | cut -d_ -f1)  # Extract epoch timestamp
+
+        # Sleep based on time difference
+        sleep_time=$((trap_epoch - previous_epoch))
+        if [ "$sleep_time" -gt 0 ]; then
+            echo "Sleeping for $sleep_time seconds to match real timing..."
+            sleep "$sleep_time"
+        fi
+
+        echo "Processing trap: $trap_file (original epoch: $trap_epoch)"
+
+        # Update timestamp inside trap and append to SNMP log
+        sed -i "s/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}/$(date +'%Y-%m-%d %H:%M:%S')/" "$trap_file"
+        if ! cat "$trap_file" >> "$log_file"; then
+            echo "Error: Failed to write to '$log_file'." >&2
+            usage
+        fi
+
+        echo "Trap appended to $log_file."
+
+        # Update previous timestamp for next iteration
+        previous_epoch="$trap_epoch"
+    done
+
+    echo "Replay complete for folder: $trap_folder"
 }
 
 BER2csv() {
@@ -622,3 +711,4 @@ translateSNMPv3() {
 #20250127,UPDATED: translateSNMPv3 - added Human readability
 #20250201,UPDATED: translateSNMPv3 - added Human readable Hash algorythm
 #20250403,UPDATED: splitLog2IndividualTraps - changed the file naming convention
+#20250404,ADDED: replaySnmptraps - replay SNMP traps in correct chronological order with delays
