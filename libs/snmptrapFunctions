@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250403'
+snmptrapFuncVersion='20250407'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -169,36 +169,57 @@ getSNMPTrapEnterpriseID() {
 #DOC:     - Traps are identified by SNMP format (SMIv1 or SMIv2).
 #DOC:     - Uses `csplit` for splitting log files.
 #DOC:     - Avoids `ls trap*` due to argument limit errors.
+#DOC:   RETURN VALUES
+#DOC:     1 - Missing required arguments
+#DOC:     2 - Log file does not exist or is not readable
 #DOC: 
 splitLog2IndividualTraps() {
-  local tmp_trap_folder=$(mktemp -d -t traps.XXX)
-  local tmp_trap_file
-  local is_trap=0 #No it's not
-  csplit -f $tmp_trap_folder/trap -s $1 '/^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9] /' {*}
-  #!!! use grep trap instead of ls /tmp/trap*, because ls trap* is returning error: too many arguments
-  for tmp_trap_file in $(ls $tmp_trap_folder | grep "trap")  
-  do
-    if [ $(grep "Enterprise Specific Trap" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
-    then
-      is_trap=1 # yes SMIv1 format
-      smi_version='SMIv1'
+    # Ensure a parameter is given
+    if [ $# -lt 1 ]; then
+        echo "Error: Missing required argument." >&2
+        echo "Usage: splitLog2IndividualTraps <log_file>" >&2
+        return 1
     fi
-    if [ $(grep "SNMPv2-MIB::snmpTrapOID" $tmp_trap_folder/$tmp_trap_file|wc -l) -gt 0 ]
-    then
-      is_trap=1 # yes SMIv2 format
-      smi_version='SMIv2'
+
+    local log_file="$1"
+
+    # Check if the file exists and is readable
+    if [ ! -r "$log_file" ]; then
+        echo "Error: File '$log_file' does not exist or is not readable." >&2
+        return 2
     fi
-    if [ $is_trap -eq 0 ]
-    then
-      rm -f $tmp_trap_folder/$tmp_trap_file
-    else
-      trap_ts=$(grep -o "^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9]" $tmp_trap_folder/$tmp_trap_file)
-      trap_epoch_ts=$(date -d "$trap_ts" +%s)
-      mv $tmp_trap_folder/$tmp_trap_file $tmp_trap_folder/${trap_epoch_ts}_${smi_version}_$tmp_trap_file
-    fi
-  done
-  echo "$tmp_trap_folder"
+
+    local tmp_trap_folder=$(mktemp -d -t traps.XXX)
+    local tmp_trap_file=""
+    local is_trap=0  # Default: Not a trap
+
+    # Split log file into individual traps based on timestamp pattern
+    csplit -f "$tmp_trap_folder/trap" -s "$log_file" '/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2} /' '{*}'
+
+    # Process only valid trap files
+    for tmp_trap_file in $(ls "$tmp_trap_folder" | grep "trap"); do
+        if grep -q "Enterprise Specific Trap" "$tmp_trap_folder/$tmp_trap_file"; then
+            is_trap=1
+            smi_version='SMIv1'
+        fi
+        if grep -q "SNMPv2-MIB::snmpTrapOID" "$tmp_trap_folder/$tmp_trap_file"; then
+            is_trap=1
+            smi_version='SMIv2'
+        fi
+
+        # Remove non-trap entries
+        if [ "$is_trap" -eq 0 ]; then
+            rm -f "$tmp_trap_folder/$tmp_trap_file"
+        else
+            trap_ts=$(grep -o "^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2}" "$tmp_trap_folder/$tmp_trap_file")
+            trap_epoch_ts=$(date -d "$trap_ts" +%s)
+            mv "$tmp_trap_folder/$tmp_trap_file" "$tmp_trap_folder/${trap_epoch_ts}_${smi_version}_$tmp_trap_file"
+        fi
+    done
+
+    echo "$tmp_trap_folder"
 }
+
 
 #DOC: log2snmptrap
 #DOC:   NAME
@@ -408,10 +429,17 @@ replaySnmptraps() {
     }
 
     # Extract the earliest epoch timestamp for initialization
-    previous_epoch=$(ls | sort -n | head -1 | cut -d_ -f1)
+    previous_epoch=$(ls | sort -n | head -n 1 | cut -d_ -f1)
+    last_trap_epoch=$(ls | sort -n | tail -n 1 | cut -d_ -f1)
+
+    remaining_runtime=$(expr $previous_epoch - $last_trap_epoch)
+    runstart_epoch=$(date '+%s')
+    expected_run_end=$(expr $runstart_epoch + $remaining_runtime)
+    expected_run_end=$(date -d @${expected_run_end})
 
     echo "Starting trap replay from folder: $trap_folder"
     echo "Writing to log file: $log_file"
+    echo "Expected finish time: $expected_run_end"
     echo "Processing traps in chronological order..."
 
     # Sort and loop through trap files
@@ -419,13 +447,16 @@ replaySnmptraps() {
         trap_epoch=$(echo "$trap_file" | cut -d_ -f1)  # Extract epoch timestamp
 
         # Sleep based on time difference
-        sleep_time=$((trap_epoch - previous_epoch))
+        sleep_time=$(expr $trap_epoch - $previous_epoch)
         if [ "$sleep_time" -gt 0 ]; then
             echo "Sleeping for $sleep_time seconds to match real timing..."
             sleep "$sleep_time"
         fi
-
+        remaining_time=$(expr $remaining_time - $sleep_time)
+       
         echo "Processing trap: $trap_file (original epoch: $trap_epoch)"
+        echo "Remaining time: $remaining_time seconds"
+        echo "Expected finish time: $expected_run_end"
 
         # Update timestamp inside trap and append to SNMP log
         sed -i "s/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}/$(date +'%Y-%m-%d %H:%M:%S')/" "$trap_file"
@@ -663,25 +694,17 @@ translateSNMPv3() {
 
 #DOC: USAGE TIPS:
 #DOC: 
-#DOC:   USE CASE 1
+#DOC:   USE CASE 1 - REPLAY TRAPS
 #DOC:     Having traps in file (in same format as snmptrapd.log) and want to reply them, (appted them in /var/log/snmptrapd.log with cureent timesatmp)
 #DOC:     # Split the big log file to individual traps it will return the folder in /tmp where there are files, one file per trap
 #DOC:     splitLog2IndividualTraps snmptrapd-netIM-Translated.log
-#DOC:     # Switch to that folder
-#DOC:     cd /tmp/traps.aMM
-#DOC:     # Now we will convert them to small scripts which append the trap to snmptrapd.log with current timestamp
-#DOC:     #   Replace the Timestamp with command to generate current timestamp in same format
-#DOC:     for trap in $(ls); do sed -i "s/[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]/\$(date +'%Y-%m-%d %H:%M:%S')/" $trap; done
-#DOC:     #   Add cat command to append to snmptrapd.log
-#DOC:     for trap in $(ls); do sed -i '1 i cat >> /var/log/snmptrapd.log<< EOF' $trap; done
-#DOC:     #   Append EOF
-#DOC:     for trap in $(ls); do echo 'EOF' >> $trap; done
-#DOC:     #   Replace tabs with 4 spaces (from some reasons traps are doing problems where injecting)
-#DOC:     for trap in $(ls); do sed -i 's/\t/    /g' $trap; done
-#DOC:     # Run all those small script. 
-#DOC:     # !! this ussually must be done by root as only root can write to /var/log/snmptrapd.log
-#DOC:     for trap in $(ls); do sh $trap; done
-
+#DOC:     # if you want to remove some traps you can do this, replace trap you wanna remove and the temp folder
+#DOC:     grep -l "NETAPP-MIB::quotaExceeded" /tmp/traps.B0t/* | xargs rm -f
+#DOC:     # Now we will run replaySnmptraps with that folder as parametr, it will take files in chronological order 
+#DOC:     # replace original timesatmp with current time and append to /var/log/snmptrapd.log
+#DOC:     # it add sleep between individual traps based on original timestamps differences
+#DOC:     replaySnmptraps /tmp/traps.B0t    
+#DOC: 
 
 #VERSION HISTORY:
 #Version,Comment
@@ -712,3 +735,4 @@ translateSNMPv3() {
 #20250201,UPDATED: translateSNMPv3 - added Human readable Hash algorythm
 #20250403,UPDATED: splitLog2IndividualTraps - changed the file naming convention
 #20250404,ADDED: replaySnmptraps - replay SNMP traps in correct chronological order with delays
+#20250407,UPDATED: USE CASE 1 in DOC comments
