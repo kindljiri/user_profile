@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250407'
+snmptrapFuncVersion='20250408'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -194,15 +194,16 @@ splitLog2IndividualTraps() {
     local is_trap=0  # Default: Not a trap
 
     # Split log file into individual traps based on timestamp pattern
-    csplit -f "$tmp_trap_folder/trap" -s "$log_file" '/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2} /' '{*}'
+    csplit -f $tmp_trap_folder/trap -s "$log_file" '/^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9] /' {*}
 
     # Process only valid trap files
+    #!!! use grep trap instead of ls /tmp/trap*, because ls trap* is returning error: too many arguments
     for tmp_trap_file in $(ls "$tmp_trap_folder" | grep "trap"); do
-        if grep -q "Enterprise Specific Trap" "$tmp_trap_folder/$tmp_trap_file"; then
+        if grep -q "Enterprise Specific Trap" ${tmp_trap_folder}/${tmp_trap_file}; then
             is_trap=1
             smi_version='SMIv1'
         fi
-        if grep -q "SNMPv2-MIB::snmpTrapOID" "$tmp_trap_folder/$tmp_trap_file"; then
+        if grep -q "SNMPv2-MIB::snmpTrapOID" ${tmp_trap_folder}/${tmp_trap_file}; then
             is_trap=1
             smi_version='SMIv2'
         fi
@@ -211,7 +212,7 @@ splitLog2IndividualTraps() {
         if [ "$is_trap" -eq 0 ]; then
             rm -f "$tmp_trap_folder/$tmp_trap_file"
         else
-            trap_ts=$(grep -o "^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2}" "$tmp_trap_folder/$tmp_trap_file")
+            trap_ts=$(grep -o "^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9] [0-9][0-9]\:[0-9][0-9]\:[0-9][0-9]" "$tmp_trap_folder/$tmp_trap_file")
             trap_epoch_ts=$(date -d "$trap_ts" +%s)
             mv "$tmp_trap_folder/$tmp_trap_file" "$tmp_trap_folder/${trap_epoch_ts}_${smi_version}_$tmp_trap_file"
         fi
@@ -736,3 +737,4 @@ translateSNMPv3() {
 #20250403,UPDATED: splitLog2IndividualTraps - changed the file naming convention
 #20250404,ADDED: replaySnmptraps - replay SNMP traps in correct chronological order with delays
 #20250407,UPDATED: USE CASE 1 in DOC comments
+#20250408,CORRECTION: csplit patern fix in replaySnmptraps

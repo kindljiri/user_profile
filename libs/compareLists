@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20241016'
+inieditVersion='20250408'
 
 #DOC: LIBRARY NAME: compareLists
 #DOC: DESCRIPTION: Library to compare lists line by line from Command line
@@ -110,3 +110,4 @@ clnotInA() {
 #VERSION HISTORY:
 #Version,Comment
 #20241016,Initial version; functions: clnotInA; clnotInB; clInAandB
+#20240408,CORRECTED: windows end of the lines
