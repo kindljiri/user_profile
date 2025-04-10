@@ -433,7 +433,7 @@ replaySnmptraps() {
     previous_epoch=$(ls | sort -n | head -n 1 | cut -d_ -f1)
     last_trap_epoch=$(ls | sort -n | tail -n 1 | cut -d_ -f1)
 
-    remaining_runtime=$(expr $previous_epoch - $last_trap_epoch)
+    remaining_runtime=$(expr $last_trap_epoch - $previous_epoch)
     runstart_epoch=$(date '+%s')
     expected_run_end=$(expr $runstart_epoch + $remaining_runtime)
     expected_run_end=$(date -d @${expected_run_end})
@@ -453,10 +453,10 @@ replaySnmptraps() {
             echo "Sleeping for $sleep_time seconds to match real timing..."
             sleep "$sleep_time"
         fi
-        remaining_time=$(expr $remaining_time - $sleep_time)
+        remaining_runtime=$(expr $remaining_runtime - $sleep_time)
        
         echo "Processing trap: $trap_file (original epoch: $trap_epoch)"
-        echo "Remaining time: $remaining_time seconds"
+        echo "Remaining time: $remaining_runtime seconds"
         echo "Expected finish time: $expected_run_end"
 
         # Update timestamp inside trap and append to SNMP log
