@@ -1,0 +1,45 @@
+#!/bin/bash
+#Library to improve autocompletion of bash
+#This Library below contains its own documentation just do:
+#grep "#DOC: "  | sed 's/[ \t]*#DOC://'
+
+# Library of functions to manipulate ini files
+#Variables:
+aacAuthor='Jiri Kindl'
+aac='20250415'
+
+#DOC: LIBRARY NAME: adminBashAutoComplete
+#DOC: DESCRIPTION: Library to improve autocompletion of bash
+#DOC: 
+
+_complete_users() {
+    local cur=${COMP_WORDS[COMP_CWORD]}  # Get current word being completed
+    COMPREPLY=( $(compgen -A user -- "$cur") )  # Suggest system users
+}
+
+# Enable autocompletion for common admin commands
+complete -F _complete_users chown
+complete -F _complete_users userdel
+complete -F _complete_users usermod
+complete -F _complete_users passwd
+
+
+_complete_services() {
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    COMPREPLY=( $(systemctl list-units --type=service --no-pager --no-legend | awk '{print $1}' | grep "^$cur") )
+}
+
+_complete_systemctl_verbs() {
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    local verbs=(
+        start stop restart reload enable disable mask unmask status 
+        show cat list-units list-dependencies list-timers 
+        is-active is-enabled daemon-reexec daemon-reload 
+        reset-failed edit 
+    )
+    COMPREPLY=( $(compgen -W "${verbs[*]}" -- "$cur") )
+}
+
+# Enable autocompletion for systemctl services and verbs
+complete -F _complete_services systemctl
+complete -F _complete_systemctl_verbs systemctl
