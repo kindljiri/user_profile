@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250408'
+snmptrapFuncVersion='20250415'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -608,17 +608,41 @@ translateSNMPv3() {
   # Source IP from UDP Header
   # And SNMP Packet
   # In addition we filter out only SNMPv3
-  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,63- --output-delimiter=, | grep ',020103' )
+  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,57- --output-delimiter=,)
   
   #Print CSV header
   echo "SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Authoritative Engine Time,Username,Hash Algorytm,Authentication Parameters,Privacy Parameters,SNMP PDU"
 
   for packet in $processed_input 
   do
+    snmp_packet=''
     src_ip_hex=$(echo "$packet" | cut -d, -f1)
     snmp_version='020103'
-    snmp_packet=$(echo -n "$packet" | cut -d, -f2 | cut -c7-)
+    udp_packet=$(echo -n "$packet" | cut -d, -f2)
+    #echo "DEBUG: udp_packet = $udp_packet"
     
+    #If it's snmp it start with eithet 3082 or 3081 
+    #diference is 82 have 2bytes for length, here 81 just 1
+    #but it matters for us because it shift start of snmp by 1 byte
+    if [ $(echo $udp_packet | grep "^3081" | wc -c) -gt 0 ]
+    then
+      snmp_packet=$(echo $udp_packet|cut -c7-)
+    fi
+    if [ $(echo $udp_packet | grep "^3082" | wc -c) -gt 0 ]
+    then
+      snmp_packet=$(echo $udp_packet|cut -c9-)
+    fi
+    if [ -z "$snmp_packet" ]
+    then
+      continue
+    fi
+
+    #Now we check it is realy SNMPv3 (if not we continue to next packet)
+    if [ $(echo $snmp_packet | grep "^020103" | wc -c) -eq 0 ]
+    then 
+      continue 
+    fi
+
     #echo "DEBUG: snmp_packet = $snmp_packet"
     
     #Get Message Global Data
@@ -738,3 +762,4 @@ translateSNMPv3() {
 #20250404,ADDED: replaySnmptraps - replay SNMP traps in correct chronological order with delays
 #20250407,UPDATED: USE CASE 1 in DOC comments
 #20250408,CORRECTION: csplit patern fix in replaySnmptraps
+#20250415,UPDATED: translateSNMPv3 - added support for long snmp packets (bigger then 256 bytes)
