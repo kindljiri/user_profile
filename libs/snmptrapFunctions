@@ -624,13 +624,13 @@ translateSNMPv3() {
     #If it's snmp it start with eithet 3082 or 3081 
     #diference is 82 have 2bytes for length, here 81 just 1
     #but it matters for us because it shift start of snmp by 1 byte
-    if [ $(echo $udp_packet | grep "^3081" | wc -c) -gt 0 ]
+    if [ $(echo -n "$udp_packet" | grep "^3081" | wc -c) -gt 0 ]
     then
-      snmp_packet=$(echo $udp_packet|cut -c7-)
+      snmp_packet=$(echo -n "$udp_packet"|cut -c7-)
     fi
-    if [ $(echo $udp_packet | grep "^3082" | wc -c) -gt 0 ]
+    if [ $(echo -n "$udp_packet" | grep "^3082" | wc -c) -gt 0 ]
     then
-      snmp_packet=$(echo $udp_packet|cut -c9-)
+      snmp_packet=$(echo -n "$udp_packet"|cut -c9-)
     fi
     if [ -z "$snmp_packet" ]
     then
@@ -638,9 +638,11 @@ translateSNMPv3() {
     fi
 
     #Now we check it is realy SNMPv3 (if not we continue to next packet)
-    if [ $(echo $snmp_packet | grep "^020103" | wc -c) -eq 0 ]
+    if [ $(echo -n "$snmp_packet" | grep "^020103" | wc -c) -eq 0 ]
     then 
       continue 
+    else
+      snmp_packet=$(echo -n "$snmp_packet" | cut -c7-)
     fi
 
     #echo "DEBUG: snmp_packet = $snmp_packet"
