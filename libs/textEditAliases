@@ -6,7 +6,7 @@
 
 #Variables:
 Author='Jiri Kindl'
-TextEditAliasesVersion='20250102'
+TextEditAliasesVersion='20250419'
 
 #Version history at the end of the file:
 
@@ -41,7 +41,6 @@ getTextEditAliasesVersion() {
 #DOC: 
 alias rmLeadingZeros="sed 's/^0*//'"
 
-
 #DOC: winEOL2linEOL 
 #DOC:   NAME 
 #DOC:     winEOL2linEOL - removes CRs (carriage returns) 
@@ -54,7 +53,7 @@ alias rmLeadingZeros="sed 's/^0*//'"
 #DOC:       echo -e “Hello\r\nWorld” | winEOL2linEOL 
 #DOC:       outputs “Hello\nWorld” 
 #DOC: 
-alias winEOL2linEOL="sed 's/\r//'"
+alias winEOL2linEOL="sed 's/\r$//'"
 
 #DOC: removeComments 
 #DOC:   NAME 
@@ -300,3 +299,4 @@ EOF
 #20230613,ADDED: findNPAC which is just copy of csvFindNPAC from splunkFunctions
 #20230622,ADDED: getTextEditAliasesVersion
 #20250102,ADDED: rmLeadingZeros
+#20250419,CORRECTION: winEOL2linEOL

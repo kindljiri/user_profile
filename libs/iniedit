@@ -7,27 +7,13 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20250328'
+inieditVersion='20250419'
 
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: iniedit
 #DOC: DESCRIPTION: Library to manipulate INI style config file from Command line
 #DOC: 
-
-#LOAD LIBRARIES
-LIBPATH="$(readlink -f "$0" | rev | cut -d'/' -f3- | rev)/libs"
-if [ ! -e $LIBPATH/textEditAliases ]
-then
-  if [ -e ~/libs/textEditAliases ]    
-  then
-    . ~/libs/textEditAliases
-  else
-    . ../libs/textEditAliases
-  fi 
-else
-  . "$LIBPATH/textEditAliases"
-fi
 
 #ENABLE OR DISABLE DEBUG
 INIEDITDEBUG='FALSE'
@@ -119,9 +105,9 @@ iniListSections() {
   
   #function code start
   if $show_line_numbers; then
-    cat "$filename" | winEOL2linEOL | trimText | grep -n -E "^\[.*\]$" | tr -d '[]'
+    cat "$filename" | sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' | grep -n -E "^\[.*\]$" | tr -d '[]'
   else
-    cat "$filename" | winEOL2linEOL | trimText | grep -E "^\[.*\]$" | tr -d '[]'
+    cat "$filename" | sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' | grep -E "^\[.*\]$" | tr -d '[]'
   fi
   
   return 0
@@ -173,7 +159,7 @@ iniExistSection() {
   # Convert each section name in the file to hexadecimal and compare it to the input section
   # This avoids issues with variable expansion and special characters in the section names
   printDebug "iniExistSection:END"
-  return $(cat $filename |winEOL2linEOL|trimText | grep -E "^\[.*\]$" |xxd -pu| tr -d '\n'| grep -q "$hex_section")
+  return $(cat $filename |sed 's/\r$//'|sed 's/^[ \t]*//' |sed 's/[ \t]*$//' | grep -E "^\[.*\]$" |xxd -pu| tr -d '\n'| grep -q "$hex_section")
 }
 
 
@@ -229,7 +215,7 @@ iniGetSectionContent() {
   then
     printDebug "iniGetSectionContent:section:$section;exist in file $tmpfile"
     
-    cat $filename|winEOL2linEOL | trimText | removeBlankLines > $tmpfile
+    cat $filename|sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' |sed '/^[ \t]*$/ d' > $tmpfile
     #First try optimized version using tail and head
     if [ $(iniListSections -n "$tmpfile" | grep -A 1 -E "^[0-9]+:$section$" | wc -l) -eq 2 ]
     then
@@ -253,9 +239,9 @@ iniGetSectionContent() {
     fi
 
     #sanitaze the input
-    cat $filename|winEOL2linEOL | trimText | removeBlankLines | sed 's/\\/\\\\/g;'> $tmpfile
+    cat $filename|sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' |sed '/^[ \t]*$/ d' | sed 's/\\/\\\\/g;'> $tmpfile
 
-    #cat $filename|winEOL2linEOL | trimText | removeBlankLines | sed 's/[]\/$*.^[]/\\&/g'> $tmpfile
+    #cat $filename|sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' |sed '/^[ \t]*$/ d' | sed 's/[]\/$*.^[]/\\&/g'> $tmpfile
     while read LINE
     do
       printDebug "iniGetSectionContent:LINE:$LINE;section_hex:$section_hex;LINE_IN_HEX:$(printf "%s" "$LINE" | xxd -pu | tr -d '\n');in_Section:$in_Section" 
@@ -535,7 +521,7 @@ iniRemoveSection() {
 
   #function code start
   
-  cat $filename |winEOL2linEOL| trimText|sed 's/\\/\\\\/g;' > $tmpfile
+  cat $filename |sed 's/\r$//'| sed 's/^[ \t]*//' |sed 's/[ \t]*$//'|sed 's/\\/\\\\/g;' > $tmpfile
   
   #swtich off the special char expantion as for example * because those chars can be part of the file
   set -o noglob
@@ -609,7 +595,7 @@ iniRemoveSectionKey() {
   #function code start
 
   # Convert Windows EOL to Linux EOL, trim text and escape backslashes
-  cat $filename|winEOL2linEOL | trimText > $tmpfile
+  cat $filename|sed 's/\r$//' | sed 's/^[ \t]*//' |sed 's/[ \t]*$//' > $tmpfile
   
   # Switch off the special char expansion as for example * because those chars can be part of the file
   set -o noglob
@@ -722,7 +708,7 @@ iniSetSectionKeyValue() {
 
   #function code start
   
-  cat $filename |winEOL2linEOL| trimText|sed 's/\\/\\\\/g;' > $tmpfile
+  cat $filename |sed 's/\r$//'| sed 's/^[ \t]*//' |sed 's/[ \t]*$//'|sed 's/\\/\\\\/g;' > $tmpfile
   
   #swtich off the special char expantion as for example * because those chars can be part of the file
   set -o noglob
@@ -1304,3 +1290,4 @@ iniIdentifyUpdates() {
 #20240626,UPDATED: iniUpdate optimization using iniGetSectionContent for notexisting sections
 #20250327,ADDED: iniFindKey; UPDATED: iniFindValueKey - optimized, chain of greps instead of while loops
 #20250328,CORRECTED: iniFindKey parametr filename was incorrectly mapped
+#20250419,UPDATED: removed depndency on textEditAliases library

@@ -6,43 +6,74 @@
 # Library of functions to manipulate ini files
 #Variables:
 aacAuthor='Jiri Kindl'
-aac='20250415'
+aac='20250418'
 
 #DOC: LIBRARY NAME: adminBashAutoComplete
 #DOC: DESCRIPTION: Library to improve autocompletion of bash
 #DOC: 
 
+#User managment
+#==============
 _complete_users() {
     local cur=${COMP_WORDS[COMP_CWORD]}  # Get current word being completed
     COMPREPLY=( $(compgen -A user -- "$cur") )  # Suggest system users
 }
 
 # Enable autocompletion for common admin commands
-complete -F _complete_users chown
 complete -F _complete_users userdel
 complete -F _complete_users usermod
 complete -F _complete_users passwd
 
-
-_complete_services() {
+#Owner ship
+#==========
+_complete_chown() {
     local cur=${COMP_WORDS[COMP_CWORD]}
-    COMPREPLY=( $(systemctl list-units --type=service --no-pager --no-legend | awk '{print $1}' | grep "^$cur") )
+    local prev=${COMP_WORDS[COMP_CWORD-1]}
+
+    # Define valid chown options
+    local opts="-r -R --reference --preserve-root --no-preserve-root --verbose"
+
+    # If first argument, suggest options and users
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") $(compgen -A user -- "$cur") )
+    elif [[ "$prev" =~ ^(-r|-R|--reference|--preserve-root|--no-preserve-root|--verbose)$ ]]; then
+        # If previous argument was an option, suggest files/folders
+        COMPREPLY=( $(compgen -df -- "$cur") )
+    else
+        # Otherwise, complete files/folders normally
+        COMPREPLY=( $(compgen -df -- "$cur") )
+    fi
 }
 
-_complete_systemctl_verbs() {
+complete -F _complete_chown chown
+
+
+#Service managment
+#=================
+_complete_systemctl() {
     local cur=${COMP_WORDS[COMP_CWORD]}
+    local prev=${COMP_WORDS[COMP_CWORD-1]}
+
+    # Define valid systemctl verbs
     local verbs=(
         start stop restart reload enable disable mask unmask status 
         show cat list-units list-dependencies list-timers 
         is-active is-enabled daemon-reexec daemon-reload 
-        reset-failed edit 
+        reset-failed edit
     )
-    COMPREPLY=( $(compgen -W "${verbs[*]}" -- "$cur") )
+
+    # If first argument, suggest verbs
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${verbs[*]}" -- "$cur") )
+    else
+        # Otherwise, suggest services
+        COMPREPLY=( $(systemctl list-units --type=service --no-pager --no-legend | awk '{print $1}' | grep "^$cur") )
+    fi
 }
 
-# Enable autocompletion for systemctl services and verbs
-complete -F _complete_services systemctl
-complete -F _complete_systemctl_verbs systemctl
+# Apply autocompletion for systemctl commands
+complete -F _complete_systemctl systemctl
+
 
 #VERSION HISTORY:
 #Version,Comment
