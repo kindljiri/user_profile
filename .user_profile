@@ -1,4 +1,4 @@
-profileVersion='20250415'
+profileVersion='20250425'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
@@ -149,6 +149,7 @@ echo "User profile loading libraries..."
 . ~/user_profile/libs/htmlDataMining
 . ~/user_profile/libs/convertDataLib
 . ~/user_profile/libs/compareLists
+. ~/user_profile/libs/networkTroubleshooting
 
 #Loading Bash Autocompletion libs
 . ~/user_profile/libs/adminBashAutoComplete

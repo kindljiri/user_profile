@@ -1,0 +1,244 @@
+#! /bin/sh
+
+#This Library below contains its own documentation just do:
+#grep "#DOC: "  networkTroubleshooting | sed 's/[ \t]*#DOC://'
+
+#Variables:
+netTrblshtAuthor='Jiri Kindl'
+netTrblshtAuthorVersion='20250424'
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: networkTroubleshooting
+#DOC: DESCRIPTION: Library of functions for easier network troubleshootings
+#DOC: 
+
+#DOC: sendASCIIoverTCP
+#DOC:   NAME
+#DOC:     sendASCIIoverTCP - Send an ASCII message over TCP
+#DOC:   SYNOPSIS
+#DOC:     sendASCIIoverTCP HOST PORT MESSAGE
+#DOC:   DESCRIPTION
+#DOC:     The sendASCIIoverTCP function establishes a TCP connection to the target machine 
+#DOC:     and sends an ASCII message. This is useful for quick troubleshooting and testing.
+#DOC:   PARAMETERS
+#DOC:     HOST    - The IP address or hostname of the destination machine.
+#DOC:     PORT    - The TCP port number to connect to.
+#DOC:     MESSAGE - The ASCII message to send.
+#DOC:   NOTES
+#DOC:     - Requires Bash with networking support.
+#DOC:     - Uses 'timeout' to prevent indefinite connection hangs.
+#DOC:     - Designed for quick connectivity tests and debugging.
+#DOC:   EXAMPLE
+#DOC:     sendASCIIoverTCP "192.168.1.100" "8080" "Hello, Server!"
+#DOC: 
+sendASCIIoverTCP() {
+    local host="$1"
+    local port="$2"
+    local data="$3"
+    local Bash=$(which bash)
+
+    # Ensure all arguments are provided
+    if [[ -z "$host" || -z "$port" || -z "$data" ]]; then
+        echo "Usage: sendASCIIoverTCP HOST PORT MESSAGE"
+        return 1
+    fi
+
+    # Open TCP connection and send the message
+    timeout 5 $Bash -c "(echo -e \"$data\" >/dev/tcp/$host/$port)" 2>/dev/null
+
+    # Check if the message was sent successfully
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to send message to $host:$port"
+        return 1
+    fi
+
+    echo "Message sent successfully to $host:$port"
+}
+
+#DOC: sendASCIIoverUDP
+#DOC:   NAME
+#DOC:     sendASCIIoverUDP - Send an ASCII message over UDP
+#DOC:   SYNOPSIS
+#DOC:     sendASCIIoverUDP HOST PORT MESSAGE
+#DOC:   DESCRIPTION
+#DOC:     The sendASCIIoverUDP function sends an ASCII message via UDP to a specified 
+#DOC:     destination. This is useful for testing UDP-based services and troubleshooting.
+#DOC:   PARAMETERS
+#DOC:     HOST    - The IP address or hostname of the destination machine.
+#DOC:     PORT    - The UDP port number to send the message to.
+#DOC:     MESSAGE - The ASCII message to send.
+#DOC:   NOTES
+#DOC:     - Requires Bash with networking support.
+#DOC:     - UDP does not guarantee message delivery.
+#DOC:     - Designed for quick connectivity tests and debugging.
+#DOC:   EXAMPLE
+#DOC:     sendASCIIoverUDP "192.168.1.100" "514" "Hello, syslog server!"
+#DOC: 
+sendASCIIoverUDP() {
+    local host="$1"
+    local port="$2"
+    local data="$3"
+    local Bash=$(which bash)
+
+    # Ensure all arguments are provided
+    if [[ -z "$host" || -z "$port" || -z "$data" ]]; then
+        echo "Usage: sendASCIIoverUDP HOST PORT MESSAGE"
+        return 1
+    fi
+
+    # Send UDP message
+    timeout 5 $Bash -c "(echo -e \"$data\" >/dev/udp/$host/$port)" 2>/dev/null
+
+    #echo "UDP message sent to $host:$port (no delivery confirmation)"
+}
+
+#DOC: sendHEXoverUDP
+#DOC:   NAME
+#DOC:     sendHEXoverUDP - Send a raw hex-formatted payload over UDP
+#DOC:   SYNOPSIS
+#DOC:     sendHEXoverUDP HOST PORT HEXDATA
+#DOC:   DESCRIPTION
+#DOC:     The sendHEXoverUDP function sends a raw hex payload via UDP to a specified destination.
+#DOC:     This ensures the full datagram is transmitted correctly, avoiding packet splitting.
+#DOC:   PARAMETERS
+#DOC:     HOST    - The IP address or hostname of the destination machine.
+#DOC:     PORT    - The UDP port number to send the payload to.
+#DOC:     HEXDATA - The payload in hex format (e.g., \x30\x81\xa1\x02\x01\x03).
+#DOC:   NOTES
+#DOC:     - The HEXDATA must already be properly escaped in the format \xHD\xHD\xHD.
+#DOC:     - UDP is connectionless; delivery is not guaranteed.
+#DOC:     - Uses Bash's built-in `/dev/udp/` mechanism with controlled buffering.
+#DOC:     - Buffer size set with `stdbuf --input=512K` to prevent packet fragmentation.
+#DOC:   EXAMPLE
+#DOC:     sendHEXoverUDP "192.168.1.100" "162" "\x30\x81\xa1\x02\x01\x03"
+#DOC:
+sendHEXoverUDP() {
+    local host="$1"
+    local port="$2"
+    local hexdata="$3"
+    local Bash=$(which bash)
+
+    # Ensure all arguments are provided
+    if [[ -z "$host" || -z "$port" || -z "$hexdata" ]]; then
+        echo "Usage: sendHEXoverUDP HOST PORT HEXDATA"
+        return 1
+    fi
+
+    # Send raw hex payload via UDP with controlled buffering
+    $Bash -c "(stdbuf --input=512K echo -ne \"$hexdata\" >/dev/udp/$host/$port)" 2>/dev/null
+
+    #echo "Raw hex payload sent to $host:$port (no delivery confirmation)"
+}
+
+
+#DOC: getUDPPayloadFromPCAP
+#DOC:   NAME
+#DOC:     getUDPPayloadFromPCAP - Print out IP/UDP Header and UDP Payload
+#DOC:   SYNOPSIS
+#DOC:     getUDPPayloadFromPCAP
+#DOC:   DESCRIPTION
+#DOC:     Reads data from tcpdump input, processes it, and outputs the data in a readable CSV format.
+#DOC:     The input can be provided either from a pcap file or live tcpdump capture.
+#DOC:   EXAMPLES
+#DOC:     # Read from a pcap file
+#DOC:     tcpdump -X -r UDPPackets.pcap | getUDPPayloadFromPCAP
+#DOC:     # Live capture with a filter (e.g., port 162 for SNMP)
+#DOC:     tcpdump -X port udp 162 | getUDPPayloadFromPCAP
+#DOC:     Output: SRC IP,SRC PORT,DST IP,DST PORT,UDP PAYLOAD
+#DOC: 
+getUDPPayloadFromPCAP() {
+  input=$(cat)  # Read all input from the pipe
+
+  processed_input=$(echo "$input" | grep -a 0x | cut -c1-50 | sed 's/[\t ]\+/ /g' | sed 's/^ 0x/:0x/' | tr -d ' \n' | sed 's/:0x0000:/\n/g' | sed 's/:0x[0-9a-f]\+://g' | cut -c25-32,33-40,41-44,45-48,57- --output-delimiter=,)
+  
+  #Print CSV header
+  echo "SRC IP,SRC PORT,DST IP,DST PORT,UDP PAYLOAD"
+
+  for packet in $processed_input 
+  do
+    udp_packet=''
+    src_ip_hex=$(echo -n "$packet" | cut -d, -f1)
+    dst_ip_hex=$(echo -n "$packet" | cut -d, -f2)
+    src_port_hex=$(echo -n "$packet" | cut -d, -f3)
+    dst_port_hex=$(echo -n "$packet" | cut -d, -f4)
+    src_ip=$(hex2ip $src_ip_hex)
+    dst_ip=$(hex2ip $dst_ip_hex)
+    src_port=$(hex2dec $src_port_hex)
+    dst_port=$(hex2dec $dst_port_hex)
+    udp_packet=$(echo -n "$packet" | cut -d, -f5 | sed 's/../\\x&/g')
+
+    echo "${src_ip},${src_port},${dst_ip},${dst_port},${udp_packet}"
+  done
+}
+
+#DOC: replayUDPFromPCAP
+#DOC:   NAME
+#DOC:     replayUDPFromPCAP - Extract and replay UDP packets from a PCAP file
+#DOC:   SYNOPSIS
+#DOC:     replayUDPFromPCAP [--dst-ip OVERRIDE_IP] PCAP_FILE
+#DOC:   DESCRIPTION
+#DOC:     Reads UDP packets from a PCAP file, extracts relevant headers and payloads,
+#DOC:     and replays them by sending the extracted hex payload to the original destination.
+#DOC:   PARAMETERS
+#DOC:     --dst-ip OVERRIDE_IP - Overrides the destination IP address.
+#DOC:     PCAP_FILE - The PCAP file containing UDP packets to replay.
+#DOC:   NOTES
+#DOC:     - Requires `tcpdump` to filter and extract UDP traffic only.
+#DOC:     - Uses `getUDPPayloadFromPCAP` for structured packet extraction.
+#DOC:     - Uses `sendHEXoverUDP` for replaying packets.
+#DOC:   EXAMPLES
+#DOC:     # Replay packets with original destination IPs
+#DOC:     replayUDPFromPCAP UDPPackets.pcap
+#DOC:     # Replay packets overriding the destination IP
+#DOC:     replayUDPFromPCAP --dst-ip 192.168.1.200 UDPPackets.pcap
+#DOC:
+replayUDPFromPCAP() {
+    local override_dst_ip=""
+    local pcap_file=""
+
+    # Process command-line arguments using while loop
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dst-ip)
+                override_dst_ip="$2"
+                shift 2
+                ;;
+            *)
+                pcap_file="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Check if PCAP file exists
+    if [[ ! -e "$pcap_file" ]]; then
+        echo "Error: PCAP file '$pcap_file' does not exist!"
+        return 1
+    fi
+
+    # Check if PCAP file is readable
+    if [[ ! -r "$pcap_file" ]]; then
+        echo "Error: PCAP file '$pcap_file' is not readable! Check permissions."
+        return 1
+    fi
+
+    # Process extracted UDP packets using a structured for-loop
+    for line in $(tcpdump -X -r "$pcap_file" "udp" | getUDPPayloadFromPCAP); do
+        src_ip=$(echo "$line" | cut -d',' -f1)
+        src_port=$(echo "$line" | cut -d',' -f2)
+        dst_ip=$(echo "$line" | cut -d',' -f3)
+        dst_port=$(echo "$line" | cut -d',' -f4)
+        udp_payload=$(echo "$line" | cut -d',' -f5)
+
+        # Override destination IP if provided
+        if [[ -n "$override_dst_ip" ]]; then
+            dst_ip="$override_dst_ip"
+        fi
+
+        sendHEXoverUDP "$dst_ip" "$dst_port" "$udp_payload"
+    done
+}
+
+#VERSION HISTORY:
+#Version,Comment
+#20250426,INIT VERSION: functions: replayUDPFromPCAP, sendHEXoverUDP, sendASCIIoverUDP, sendASCIIoverUDP, getUDPPayloadFromPCAP
