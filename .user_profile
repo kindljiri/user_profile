@@ -1,4 +1,4 @@
-profileVersion='20250425'
+profileVersion='20250426'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
@@ -125,15 +125,42 @@ profileVersion() {
 }
 
 updateUserProfile() {
-    mv ~/user_profile ~/user_profile.backup
-    git clone https://github.com/kindljiri/user_profile.git
-    if [ $? -eq 0 ]
-    then
-      rm -rf ~/user_profile.backup
+    local temp_dir=$(mktemp -d)  # Create a temporary folder
+    local auto_confirm=false
+
+    # Process command-line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -y)
+                auto_confirm=true
+                shift
+                ;;
+        esac
+    done
+
+    # Clone repository into temporary folder
+    git clone https://github.com/kindljiri/user_profile.git "$temp_dir"
+    if [ $? -eq 0 ]; then
+        # Backup current profile before copying over new changes
+        cp -R ~/user_profile ~/user_profile.backup
+
+        # Use automatic confirmation if -y flag is provided
+        if [ "$auto_confirm" = true ]; then
+            yes | cp -R "$temp_dir/"* ~/user_profile/
+        else
+            cp -R "$temp_dir/"* ~/user_profile/
+        fi
+
+        echo "";
+
+        # Remove backup if update was successful
+        rm -rf ~/user_profile.backup
     else
-      rm -rf ~/user_profile
-      mv ~/user_profile.backup ~/user_profile
+        echo "Error: Git clone failed! Update not applied."
     fi
+
+    # Cleanup temporary directory
+    rm -rf "$temp_dir"
 }
 
 echo "User profile loading libraries..."
