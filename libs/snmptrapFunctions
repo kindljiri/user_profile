@@ -575,7 +575,7 @@ BER2csv() {
 #DOC:     tcpdump -X port 162 | translateSNMPv3
 #DOC:     Output: SRC IP,SNMP Version,Message ID,Max Message Size,Message Flags,Security Model,Engine ID,Engine Boots,Authoritative Engine Time,Username,Hash Algorytm,Authentication Parameters,Privacy Parameters,SNMP PDU
 #DOC:     TIP: To get most important data in nice readable table use:
-#DOC:     tcpdump -X -r SNMPv3.cap | translateSNMPv3| cut -d, -f1,7,10,11 |column -s, -t
+#DOC:     tcpdump -X -r SNMPv3.cap | translateSNMPv3|cut -d, -f1,5,7,10,11 |column -s, -t
 #DOC: 
 translateSNMPv3() {
   input=$(cat)  # Read all input from the pipe
