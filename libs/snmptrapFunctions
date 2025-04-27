@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250424'
+snmptrapFuncVersion='20250426'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -822,8 +822,43 @@ translateSNMPv3() {
     #Reassamble snmp_Sec_Params with Human readable data
     snmp_Sec_Params_Printable=$(echo -n "$Engine_ID,$Engine_Boots,$Authoritative_Engine_Time,$Username_ASCII,$hash_algorythm,$Authentication_Parameters,$Privacy_Parameters")
 
+    Message_ID=$(echo -n "$snmp_Msg_Glob_Data_csv"| cut -d, -f1)
+    Max_Message_Size=$(echo -n "$snmp_Msg_Glob_Data_csv"| cut -d, -f2)
+    Message_Flags=$(echo -n "$snmp_Msg_Glob_Data_csv"| cut -d, -f3)
+    Security_Model=$(echo -n "$snmp_Msg_Glob_Data_csv"| cut -d, -f4)
 
-    echo "$src_ip,$snmp_version,$snmp_Msg_Glob_Data_csv,$snmp_Sec_Params_Printable,$snmp_pdu"
+    #Message flags are structured as three individual bits:
+    # Bit 0 (Auth Flag) → 0x01
+    # Bit 1 (Priv Flag) → 0x02
+    # Bit 2 (Reportable Flag) → 0x04
+    mf_bits=$(dec2bin $(hex2dec 3)|rev)
+    mf_bit0=$(echo $mf_bits| cut -c1)
+    mf_bit1=$(echo $mf_bits| cut -c2)
+    mf_bit2=$(echo $mf_bits| cut -c3)
+    if [ "$mf_bit0" -eq 1]
+    then
+      MF_AF=$(echo "Auth")
+    else
+      MF_AF=$(echo "NoAuth")
+    fi
+    if [ "$mf_bit1" -eq 1]
+    then
+      MF_PF=$(echo "Priv")
+    else
+      MF_PF=$(echo "NoPriv")
+    fi
+    if [ "$mf_bit2" -eq 1]
+    then
+      MF_RF=$(echo "Inform:")
+    else
+      MF_RF=$(echo "")
+    fi
+
+    MF_HumanReadable=$(echo "${MF_RF}${MF_AF}${MF_PF}")
+    Message_Flags=$(echo "${MF_HumanReadable} (${Message_Flags})")
+
+    $Message_ID,$Max_Message_Size,$Message_Flags,$Security_Model
+    echo "$src_ip,$snmp_version,$Message_ID,$Max_Message_Size,$Message_Flags,$Security_Model,$snmp_Sec_Params_Printable,$snmp_pdu"
   done
 }
 
@@ -875,3 +910,4 @@ translateSNMPv3() {
 #20250415,UPDATED: translateSNMPv3 - added support for long snmp packets (bigger then 256 bytes)
 #20250421,UPDATED: replaySnmptraps -added -d option for custom or no delay and option to run from file
 #20250424,UPDATED: translateSNMPv3 - added support for long format of sequences in snmp packets
+#20250426,UPDATED: translateSNMPv3 - added human readable Message Flags
