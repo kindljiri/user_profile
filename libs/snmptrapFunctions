@@ -5,7 +5,7 @@
 
 #Variables:
 snmptrapFuncAuthor='Jiri Kindl'
-snmptrapFuncVersion='20250426'
+snmptrapFuncVersion='20250427'
 #Version history at the end of the file:
 
 #DOC: LIBRARY NAME: snmptrapFunctions
@@ -831,10 +831,10 @@ translateSNMPv3() {
     # Bit 0 (Auth Flag) → 0x01
     # Bit 1 (Priv Flag) → 0x02
     # Bit 2 (Reportable Flag) → 0x04
-    mf_bits=$(dec2bin $(hex2dec 3)|rev)
-    mf_bit0=$(echo $mf_bits| cut -c1)
-    mf_bit1=$(echo $mf_bits| cut -c2)
-    mf_bit2=$(echo $mf_bits| cut -c3)
+    mf_bits=$(dec2bin $(hex2dec $Message_Flags)|rev)
+    mf_bit0=$(echo "${mf_bits}000"| cut -c1)
+    mf_bit1=$(echo "${mf_bits}000"| cut -c2)
+    mf_bit2=$(echo "${mf_bits}000"| cut -c3)
     if [ "$mf_bit0" -eq 1 ]
     then
       MF_AF=$(echo "Auth")
@@ -911,3 +911,4 @@ translateSNMPv3() {
 #20250421,UPDATED: replaySnmptraps -added -d option for custom or no delay and option to run from file
 #20250424,UPDATED: translateSNMPv3 - added support for long format of sequences in snmp packets
 #20250426,UPDATED: translateSNMPv3 - added human readable Message Flags
+#20250427,CORRECTION: translateSNMPv3 - fixing problem with leading 0 (missing) in Message Flags
