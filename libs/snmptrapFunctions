@@ -835,19 +835,19 @@ translateSNMPv3() {
     mf_bit0=$(echo $mf_bits| cut -c1)
     mf_bit1=$(echo $mf_bits| cut -c2)
     mf_bit2=$(echo $mf_bits| cut -c3)
-    if [ "$mf_bit0" -eq 1]
+    if [ "$mf_bit0" -eq 1 ]
     then
       MF_AF=$(echo "Auth")
     else
       MF_AF=$(echo "NoAuth")
     fi
-    if [ "$mf_bit1" -eq 1]
+    if [ "$mf_bit1" -eq 1 ]
     then
       MF_PF=$(echo "Priv")
     else
       MF_PF=$(echo "NoPriv")
     fi
-    if [ "$mf_bit2" -eq 1]
+    if [ "$mf_bit2" -eq 1 ]
     then
       MF_RF=$(echo "Inform:")
     else
