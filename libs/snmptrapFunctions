@@ -857,7 +857,6 @@ translateSNMPv3() {
     MF_HumanReadable=$(echo "${MF_RF}${MF_AF}${MF_PF}")
     Message_Flags=$(echo "${MF_HumanReadable} (${Message_Flags})")
 
-    $Message_ID,$Max_Message_Size,$Message_Flags,$Security_Model
     echo "$src_ip,$snmp_version,$Message_ID,$Max_Message_Size,$Message_Flags,$Security_Model,$snmp_Sec_Params_Printable,$snmp_pdu"
   done
 }
