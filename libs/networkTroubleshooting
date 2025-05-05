@@ -119,8 +119,19 @@ sendHEXoverUDP() {
     local Bash=$(which bash)
 
     # Ensure all arguments are provided
-    if [[ -z "$host" || -z "$port" || -z "$hexdata" ]]; then
-        echo "Usage: sendHEXoverUDP HOST PORT HEXDATA"
+    if [ -z "$host" ]; then
+        echo "ERROR: Missing parametr HOST" >&2
+        echo "Usage: sendHEXoverUDP HOST PORT HEXDATA" >&2
+        return 1
+    fi
+    if [ -z "$port" ]; then
+        echo "ERROR: Missing parametr PORT" >&2
+        echo "Usage: sendHEXoverUDP HOST PORT HEXDATA" >&2
+        return 1
+    fi
+    if [ -z "$hexdata" ]; then
+        echo "ERROR: Missing parametr HEXDATA" >&2
+        echo "Usage: sendHEXoverUDP HOST PORT HEXDATA" >&2
         return 1
     fi
 
@@ -195,6 +206,8 @@ getUDPPayloadFromPCAP() {
 replayUDPFromPCAP() {
     local override_dst_ip=""
     local pcap_file=""
+    local verbose='FALSE'
+    local counter='1'
 
     # Process command-line arguments using while loop
     while [[ $# -gt 0 ]]; do
@@ -202,6 +215,10 @@ replayUDPFromPCAP() {
             --dst-ip)
                 override_dst_ip="$2"
                 shift 2
+                ;;
+            -v)
+                verbose='TRUE'
+                shift
                 ;;
             *)
                 pcap_file="$1"
@@ -222,8 +239,124 @@ replayUDPFromPCAP() {
         return 1
     fi
 
-    # Process extracted UDP packets using a structured for-loop
-    for line in $(tcpdump -X -r "$pcap_file" "udp" | getUDPPayloadFromPCAP); do
+    pcap_size=$(stat -c%s "$pcap_file")  # Get file size in bytes
+    size_limit=$((1024 * 1024))  # Define threshold (1MB)
+
+    if [ "$pcap_size" -lt "$size_limit" ]; then
+        # Small PCAP: Store output in a variable
+        temp_data=$(tcpdump -X -r "$pcap_file" "udp" | getUDPPayloadFromPCAP)
+
+        echo "$temp_data" | while read -r line; do
+            # Process each line 
+            src_ip=$(echo "$line" | cut -d',' -f1)
+            src_port=$(echo "$line" | cut -d',' -f2)
+            dst_ip=$(echo "$line" | cut -d',' -f3)
+            dst_port=$(echo "$line" | cut -d',' -f4)
+            udp_payload=$(echo "$line" | cut -d',' -f5)
+
+            # Override destination IP if provided
+            if [ -n "$override_dst_ip" ]; then
+                dst_ip="$override_dst_ip"
+            fi
+
+            if [ "$verbose" = 'TRUE' ]
+            then
+                echo "Sending pkt #${counter}: DST: ${dst_ip}:${dst_port}; PAYLOAD: $udp_payload"
+                counter=$(expr $counter + 1)
+            fi
+
+            sendHEXoverUDP "$dst_ip" "$dst_port" "$udp_payload"
+        done
+    else
+        # Large PCAP: Use a temp file instead
+        temp_file=$(mktemp)
+
+        tcpdump -X -r "$pcap_file" "udp" | getUDPPayloadFromPCAP > "$temp_file"
+
+        while read -r line; do
+            # Process each line 
+            src_ip=$(echo "$line" | cut -d',' -f1)
+            src_port=$(echo "$line" | cut -d',' -f2)
+            dst_ip=$(echo "$line" | cut -d',' -f3)
+            dst_port=$(echo "$line" | cut -d',' -f4)
+            udp_payload=$(echo "$line" | cut -d',' -f5)
+
+            # Override destination IP if provided
+            if [ -n "$override_dst_ip" ]; then
+                dst_ip="$override_dst_ip"
+            fi
+
+            if [ "$verbose" = 'TRUE' ]
+            then
+                echo "Sending pkt #${counter}: DST: ${dst_ip}:${dst_port}; PAYLOAD: $udp_payload"
+                counter=$(expr $counter + 1)
+            fi
+
+            sendHEXoverUDP "$dst_ip" "$dst_port" "$udp_payload"
+        done < "$temp_file"
+
+        rm -f "$temp_file"  # Clean up temp file after use
+    fi
+
+}
+
+#DOC: replayUDPFromCSV
+#DOC:   NAME
+#DOC:     replayUDPFromCSV - Extract and replay UDP packets from a CSV file (output of getUDPPayloadFromPCAP)
+#DOC:   SYNOPSIS
+#DOC:     replayUDPFromCSV [--dst-ip OVERRIDE_IP] CSV_FILE
+#DOC:   DESCRIPTION
+#DOC:     Reads UDP packets from a CSV file, extracts relevant headers and payloads,
+#DOC:     and replays them by sending the extracted hex payload to the original destination.
+#DOC:   PARAMETERS
+#DOC:     --dst-ip OVERRIDE_IP - Overrides the destination IP address.
+#DOC:     CSV_FILE - The CSVP file containing UDP packets to replay.
+#DOC:   NOTES
+#DOC:     - Uses `sendHEXoverUDP` for replaying packets.
+#DOC:   EXAMPLES
+#DOC:     # Replay packets with original destination IPs
+#DOC:     replayUDPFromCSV UDPPackets.csv
+#DOC:     # Replay packets overriding the destination IP
+#DOC:     replayUDPFromCSV --dst-ip 192.168.1.200 UDPPackets.csv
+#DOC:
+replayUDPFromCSV() {
+    local override_dst_ip=""
+    local csv_file=""
+    local verbose='FALSE'
+    local counter='1'
+
+    # Process command-line arguments using while loop
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dst-ip)
+                override_dst_ip="$2"
+                shift 2
+                ;;
+            -v)
+                verbose='TRUE'
+                shift
+                ;;
+            *)
+                csv_file="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Check if CSV file exists
+    if [[ ! -e "$csv_file" ]]; then
+        echo "Error: CSV file '$csv_file' does not exist!"
+        return 1
+    fi
+
+    # Check if CSV file is readable
+    if [[ ! -r "$csv_file" ]]; then
+        echo "Error: CSV file '$csv_file' is not readable! Check permissions."
+        return 1
+    fi
+
+    while read -r line; do
+        # Process each line 
         src_ip=$(echo "$line" | cut -d',' -f1)
         src_port=$(echo "$line" | cut -d',' -f2)
         dst_ip=$(echo "$line" | cut -d',' -f3)
@@ -231,14 +364,23 @@ replayUDPFromPCAP() {
         udp_payload=$(echo "$line" | cut -d',' -f5)
 
         # Override destination IP if provided
-        if [[ -n "$override_dst_ip" ]]; then
+        if [ -n "$override_dst_ip" ]; then
             dst_ip="$override_dst_ip"
         fi
 
+        if [ "$verbose" = 'TRUE' ]
+        then
+            echo "Sending pkt #${counter}: DST: ${dst_ip}:${dst_port}; PAYLOAD: $udp_payload"
+            counter=$(expr $counter + 1)
+        fi
+
         sendHEXoverUDP "$dst_ip" "$dst_port" "$udp_payload"
-    done
+    done < "$csv_file"
+
 }
+
 
 #VERSION HISTORY:
 #Version,Comment
 #20250426,INIT VERSION: functions: replayUDPFromPCAP, sendHEXoverUDP, sendASCIIoverUDP, sendASCIIoverUDP, getUDPPayloadFromPCAP
+#20250503,ADDED: replayUDPFromCSV
