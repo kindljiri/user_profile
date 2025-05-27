@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250315"
+adminFuncVersion="20250526"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -797,6 +797,63 @@ fixHomeOwnership() {
   sudo chown -R ${user}:${group} ~
 }
 
+#DOC: folderFingerprint [-hash md5sum|sha1sum|sha256sum|sha512sum] [FOLDER]
+#DOC:   NAME
+#DOC:     folderFingerprint - generate hashes of all files recursively within a folder
+#DOC:   SYNOPSIS
+#DOC:     folderFingerprint [-hash md5sum|sha1sum|sha256sum|sha512sum] [FOLDER]
+#DOC:   DESCRIPTION
+#DOC:     The folderFingerprint function computes hashes for all files within a specified folder.
+#DOC:     The hash algorithm is provided via the `-hash` option. If omitted, it defaults to `md5sum`.
+#DOC:     The folder to process is optional; if omitted, it defaults to the current directory.
+#DOC:   OPTIONS
+#DOC:     -hash md5sum|sha1sum|sha256sum|sha512sum
+#DOC:         Specifies the hash algorithm. The default is `md5sum`.
+#DOC:     FOLDER
+#DOC:         Optional path to the folder. Defaults to the current working directory.
+#DOC:   EXAMPLES
+#DOC:     folderFingerprint
+#DOC:     Computes MD5 hashes for all files in the current directory.
+#DOC:     folderFingerprint -hash sha256sum /path/to/folder
+#DOC:     Computes SHA-256 hashes for all files inside /path/to/folder.
+#DOC:
+
+folderFingerprint() {
+    # Default values
+    hashCommand="md5sum"
+    folderPath="$PWD"
+
+    # Parse options
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -hash)
+                shift
+                if echo "md5sum sha1sum sha256sum sha512sum" | grep -qw "$1"; then
+                    hashCommand="$1"
+                else
+                    echo "Error: '$1' is not a valid hash function!"
+                    echo "Allowed options: md5sum, sha1sum, sha256sum, sha512sum"
+                    return 1
+                fi
+                ;;
+            *)
+                folderPath="$1"  # Assign folder if provided
+                ;;
+        esac
+        shift
+    done
+
+    # Ensure the folder exists
+    if [ ! -d "$folderPath" ]; then
+        echo "Error: Folder '$folderPath' does not exist!"
+        return 1
+    fi
+
+    # Generate hashes for all files recursively
+    find "$folderPath" -type f -exec $hashCommand {} +
+}
+
+
 
 #VERSION HISTORY:
 #20230418,INIT Version
@@ -816,3 +873,4 @@ fixHomeOwnership() {
 #20250310,UPDATED: functions restartService,startService,stopService with verbosity
 #20250312,ADDED: function fixHomeOwnership - Change ownership of home directory to the current user and group
 #20250315,ADDED: function getProcessENV - Retrieve and display the environment variables of a specified process
+#20250526,ADDED: function folderFingerprint - generate hashes of all files recursively within a folder
