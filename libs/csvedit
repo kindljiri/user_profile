@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250216'
+csveditVersion='20250530'
 
 #Version history at the end of the file:
 
@@ -27,6 +27,16 @@ getCsveditVersion() {
   echo $csveditVersion
   return 0
 }
+
+#DOC: csvRemoveTrailingCommas 
+#DOC:   NAME 
+#DOC:     csvRemoveTrailingCommas - removes commas at the end of the line 
+#DOC:   SYNOPSIS 
+#DOC:     csvRemoveTrailingCommas
+#DOC:   DESCRIPTION 
+#DOC:     Removes commas at the end of the line 
+#DOC: 
+alias csvRemoveTrailingCommas="sed 's/,*$//'"
 
 #DOC: csvCheckFile FILE
 #DOC:   NAME
@@ -55,6 +65,39 @@ csvCheckFile() {
   fi
   return 0
 }
+
+#DOC: csvGetNumberOfFields [FILE]
+#DOC:   NAME
+#DOC:        csvGetNumberOfFields - count the number of fields in a CSV row
+#DOC:   SYNOPSIS
+#DOC:        csvGetNumberOfFields [FILE]
+#DOC:   DESCRIPTION
+#DOC:        csvGetNumberOfFields counts the number of fields in each row of a CSV file or standard input.
+#DOC:        If FILE is provided, it reads from the file; otherwise, it reads from stdin.
+#DOC:   EXAMPLE
+#DOC:        csvGetNumberOfFields myCsvFile.csv
+#DOC:        cat myCsvFile.csv | csvGetNumberOfFields
+#DOC: 
+csvGetNumberOfFields() {
+  local filename=$1
+
+  if [ -n "$filename" ]; then
+    csvCheckFile "$filename"
+    local checkFileResult=$?
+    if [ $checkFileResult -ne 0 ]; then
+      echo "Usage: csvGetNumberOfFields [FILE]" >&2
+      return $checkFileResult
+    fi
+    input=$(cat "$filename")
+  else
+    input=$(cat)
+  fi
+
+  echo "$input" | sed 's/\\"//g' | tr -cd '",' | sed 's/",+"//g' | while read -r row; do
+    echo -n "$row" | wc -c
+  done
+}
+
 
 #DOC: csvGetHeader FILE
 #DOC:   NAME
@@ -752,3 +795,4 @@ csvFlattenMultiLineFields() {
 #20231016,CORRECTED: csvContainsMultiLinesFields help corrected
 #20250209,UPDATED: csvGetFieldIndex - added options -a -v -o (all,verbose,offset) and used grep instaed of simple equal;ADDED: csvHeader2Index which print fields one pre lined with number, in forma line#:fieldName
 #20250216,ADDED: csvLine2Fields - converts line to fields, one field per line
+#20250530,ADDED: csvRemoveTrailingCommas alias, csvGetNumberOfFields function
