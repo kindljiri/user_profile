@@ -629,7 +629,7 @@ getPartitionSize() {
 checkFolderOwnership() {
   local folder=$1
   local user=$2
-  local return_value = $(find $folder ! -user $user | wc -l)
+  local return_value=$(find $folder ! -user $user | wc -l)
   if [ $return_value -ne 0 ]
   then
     echo "ERROR: there are files in $folder which not belong to $user"
@@ -874,3 +874,4 @@ folderFingerprint() {
 #20250312,ADDED: function fixHomeOwnership - Change ownership of home directory to the current user and group
 #20250315,ADDED: function getProcessENV - Retrieve and display the environment variables of a specified process
 #20250526,ADDED: function folderFingerprint - generate hashes of all files recursively within a folder
+#20250601,CORRECTED: checkFolderOwnership - wrong avriable assignemet ' = ' spaces around = 

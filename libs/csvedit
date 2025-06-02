@@ -28,15 +28,49 @@ getCsveditVersion() {
   return 0
 }
 
-#DOC: csvRemoveTrailingCommas 
-#DOC:   NAME 
-#DOC:     csvRemoveTrailingCommas - removes commas at the end of the line 
-#DOC:   SYNOPSIS 
-#DOC:     csvRemoveTrailingCommas
-#DOC:   DESCRIPTION 
-#DOC:     Removes commas at the end of the line 
+#DOC: csvRemoveTrailingCommas [-i] [FILE]
+#DOC:   NAME
+#DOC:        csvRemoveTrailingCommas - removes trailing commas at the end of each line
+#DOC:   SYNOPSIS
+#DOC:        csvRemoveTrailingCommas [-i] [FILE]
+#DOC:   DESCRIPTION
+#DOC:        Removes commas at the end of each line in a CSV file or from standard input.
+#DOC:        If FILE is provided, it reads from the file; otherwise, it reads from stdin.
+#DOC:        The -i option modifies the file in place instead of printing output.
+#DOC:   EXAMPLE
+#DOC:        csvRemoveTrailingCommas myCsvFile.csv
+#DOC:        csvRemoveTrailingCommas -i myCsvFile.csv
+#DOC:        cat myCsvFile.csv | csvRemoveTrailingCommas
 #DOC: 
-alias csvRemoveTrailingCommas="sed 's/,*$//'"
+csvRemoveTrailingCommas() {
+  local inplace=0
+  local filename=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i) inplace=1 ;;
+      *) filename="$1" ;;
+    esac
+    shift
+  done
+
+  if [ -n "$filename" ]; then
+    csvCheckFile "$filename"
+    local checkFileResult=$?
+    if [ $checkFileResult -ne 0 ]; then
+      echo "Usage: csvRemoveTrailingCommas [-i] [FILE]" >&2
+      return $checkFileResult
+    fi
+
+    if [ $inplace -eq 1 ]; then
+      sed -i 's/\r$//' "$filename" && sed -i 's/,*$//' "$filename"
+    else
+      sed 's/\r$//' "$filename" |sed 's/,*$//'
+    fi
+  else
+    sed 's/\r$//'|sed 's/,*$//'
+  fi
+}
 
 #DOC: csvCheckFile FILE
 #DOC:   NAME
@@ -93,8 +127,8 @@ csvGetNumberOfFields() {
     input=$(cat)
   fi
 
-  echo "$input" | sed 's/\\"//g' | tr -cd '",' | sed 's/",+"//g' | while read -r row; do
-    echo -n "$row" | wc -c
+  echo "$input" | sed 's/\\"//g' | tr -cd '\n",' | sed 's/",*"//g' | while read -r row; do
+    echo "$row" | wc -c
   done
 }
 
