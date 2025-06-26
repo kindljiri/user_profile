@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250526"
+adminFuncVersion="20250606"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -42,6 +42,12 @@ backupFile() {
   local timestamp=$(date +%Y%m%d_%H%M%S)
   backupfile="${file2backup}_${timestamp}"
   cp $file2backup $backupfile
+  if [ $? -eq 0 ]
+  then
+    echo "$file2backup"
+  else 
+    return 1
+  fi
 }
 
 #DOC: backupFolder [-t|--tarball] FOLDER
@@ -615,29 +621,67 @@ getPartitionSize() {
     
 }
 
-#DOC: checkFolderOwnership
+#DOC: checkFolderOwnership [-q] FOLDER USER
 #DOC:   NAME
-#DOC:     checkFolderOwnership - check if all files under a given folder belong to a given user
+#DOC:        checkFolderOwnership - check if all files under a given folder belong to a given user
 #DOC:   SYNOPSIS
-#DOC:     checkFolderOwnership FOLDER USER
+#DOC:        checkFolderOwnership [-q] FOLDER USER
 #DOC:   DESCRIPTION
-#DOC:     The checkFolderOwnership function takes two arguments, FOLDER and USER.
-#DOC:     It checks if all files under the given folder belong to the given user.
-#DOC:     If there are files that do not belong to the specified user, it prints an error message and lists the files that do not belong to the user.
-#DOC:     It also suggests a command to correct the ownership of the files.
+#DOC:        Checks if all files under the given folder belong to the given user.
+#DOC:        If -q is provided, it suppresses output and only returns an exit code.
+#DOC:        If there are files that do not belong to the specified user, it prints their list unless -q is used.
+#DOC:        Returns:
+#DOC:          0  - All files belong to the user
+#DOC:         10  - Folder does not exist
+#DOC:         20  - Invalid arguments
+#DOC:         30  - Ownership mismatch (some files do not belong to the specified user)
+#DOC:   EXAMPLE
+#DOC:        checkFolderOwnership /var/log root
+#DOC:        checkFolderOwnership -q /etc/snmp snmp
 #DOC: 
 checkFolderOwnership() {
-  local folder=$1
-  local user=$2
-  local return_value=$(find $folder ! -user $user | wc -l)
-  if [ $return_value -ne 0 ]
-  then
-    echo "ERROR: there are files in $folder which not belong to $user"
-    find $folder ! -user $user
-    echo "Correction: chown -R $user:$user $folder"
+  local quiet=0
+  local folder=""
+  local user=""
+
+  # Parse arguments using while + shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -q) quiet=1 ;;
+      *) 
+        if [[ -z "$folder" ]]; then
+          folder="$1"
+        elif [[ -z "$user" ]]; then
+          user="$1"
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  # Validate input
+  if [[ -z "$folder" || -z "$user" ]]; then
+    echo "Usage: checkFolderOwnership [-q] FOLDER USER" >&2
+    return 20
   fi
-  return $return_value
+
+  if [[ ! -d "$folder" ]]; then
+    echo "Error: Folder '$folder' does not exist!" >&2
+    return 10
+  fi
+
+  # Find mismatched ownership files
+  local mismatched_files
+  mismatched_files=$(find "$folder" ! -user "$user")
+
+  if [[ -n "$mismatched_files" ]]; then
+    [[ $quiet -eq 0 ]] && echo "$mismatched_files"
+    return 30
+  fi
+
+  return 0  # Success
 }
+
 
 #DOC: getProcessENV
 #DOC:   NAME
@@ -875,3 +919,4 @@ folderFingerprint() {
 #20250315,ADDED: function getProcessENV - Retrieve and display the environment variables of a specified process
 #20250526,ADDED: function folderFingerprint - generate hashes of all files recursively within a folder
 #20250601,CORRECTED: checkFolderOwnership - wrong avriable assignemet ' = ' spaces around = 
+#20250606,UPDATED: backupFile - is verbose, returning the backup file name

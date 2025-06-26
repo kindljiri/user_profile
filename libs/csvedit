@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250530'
+csveditVersion='20250626'
 
 #Version history at the end of the file:
 
@@ -130,6 +130,43 @@ csvGetNumberOfFields() {
   echo "$input" | sed 's/\\"//g' | tr -cd '\n",' | sed 's/",*"//g' | while read -r row; do
     echo "$row" | wc -c
   done
+}
+
+#DOC: csvCheckUniformFieldCount [FILE]
+#DOC:   NAME
+#DOC:        csvCheckUniformFieldCount - verify all rows in a CSV file have the same number of fields
+#DOC:   SYNOPSIS
+#DOC:        csvCheckUniformFieldCount [FILE]
+#DOC:   DESCRIPTION
+#DOC:        Returns 0 if all rows in the CSV have the same number of fields. Non-zero otherwise.
+#DOC:        If FILE is provided, reads from the file; otherwise, reads from stdin.
+#DOC:   EXAMPLE
+#DOC:        csvCheckUniformFieldCount myCsvFile.csv
+#DOC:        cat myCsvFile.csv | csvCheckUniformFieldCount
+#DOC: 
+csvCheckUniformFieldCount() {
+  local file="$1"
+  local input
+
+  if [[ -n "$file" ]]; then
+    if [[ ! -f "$file" || ! -r "$file" ]]; then
+      echo "File '$file' not found or not readable." >&2
+      return 1
+    fi
+    input=$(cat "$file")
+  else
+    input=$(cat)
+  fi
+
+  local unique_fields
+  unique_fields=$(echo "$input" | csvGetNumberOfFields | sort -nu | wc -l)
+
+  if [[ "$unique_fields" -eq 1 ]]; then
+    return 0
+  else
+    echo "Non-uniform number of fields detected." >&2
+    return 2
+  fi
 }
 
 
@@ -597,6 +634,259 @@ csvHeader2Index() {
     done <<< "$header"
 }
 
+#DOC: csvAppend - append CSV data from one file to another
+#DOC:
+#DOC:   NAME
+#DOC:       csvAppend - appends records from a source CSV to a target CSV
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:       csvAppend [-s|--strict] [-n|--dry-run] <source_file> <target_file>
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:       Validates headers between source and target CSVs (ignoring quotes),
+#DOC:       and appends all non-header rows from source to target.
+#DOC:       If --strict is provided, it additionally verifies:
+#DOC:         - that each file has uniform field counts across all rows
+#DOC:         - that the field count matches between source and target
+#DOC:       If --dry-run is provided, the function prints the rows to stdout
+#DOC:       instead of modifying the target file.
+#DOC:
+#DOC:   OPTIONS
+#DOC:       -s, --strict     Enable structural validation
+#DOC:       -n, --dry-run    Print rows to be appended instead of writing
+#DOC:
+#DOC:   RETURNS
+#DOC:       0   on success
+#DOC:       1   if source file does not exist
+#DOC:       2   if source file is not readable
+#DOC:       3   if target file does not exist
+#DOC:       4   if target file is not writable (unless dry-run)
+#DOC:       5   if headers differ after normalization
+#DOC:       6   if source fails structural validation in strict mode
+#DOC:       7   if target fails structural validation in strict mode
+#DOC:       8   if source and target field counts differ in strict mode
+#DOC:      98   if required arguments are missing
+#DOC:      99   for unexpected arguments
+#DOC:
+#DOC:   EXAMPLES
+#DOC:       csvAppend data.csv master.csv
+#DOC:       csvAppend --strict updates.csv data.csv
+#DOC:       csvAppend -sn new.csv report.csv
+
+csvAppend() {
+  local strict_mode=0
+  local dry_run=0
+  local source_file target_file
+
+  # Parse arguments
+  while [[ "$1" ]]; do
+    case "$1" in
+      -s|--strict)
+        strict_mode=1
+        shift
+        ;;
+      -n|--dry-run)
+        dry_run=1
+        shift
+        ;;
+      *)
+        if [[ -z "$source_file" ]]; then
+          source_file="$1"
+        elif [[ -z "$target_file" ]]; then
+          target_file="$1"
+        else
+          echo "Unexpected argument: $1" >&2
+          return 99
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  # Validate args
+  if [[ -z "$source_file" || -z "$target_file" ]]; then
+    echo "Usage: csvAppend [-s|--strict] [-n|--dry-run] <source_file> <target_file>" >&2
+    return 98
+  fi
+
+  # Source checks
+  if [[ ! -f "$source_file" ]]; then
+    echo "Source file '$source_file' does not exist." >&2
+    return 1
+  elif [[ ! -r "$source_file" ]]; then
+    echo "Source file '$source_file' is not readable." >&2
+    return 2
+  fi
+
+  # Target checks
+  if [[ ! -f "$target_file" ]]; then
+    echo "Target file '$target_file' does not exist." >&2
+    return 3
+  elif [[ "$dry_run" -eq 0 && ! -w "$target_file" ]]; then
+    echo "Target file '$target_file' is not writable." >&2
+    return 4
+  fi
+
+  # Normalize and compare headers
+  local src_header tgt_header
+  src_header=$(head -n 1 "$source_file" | sed 's/"//g')
+  tgt_header=$(head -n 1 "$target_file" | sed 's/"//g')
+
+  if [[ "$src_header" != "$tgt_header" ]]; then
+    echo "Header mismatch (after quote normalization)—append aborted." >&2
+    return 5
+  fi
+
+  # Structural validation
+  if [[ "$strict_mode" -eq 1 ]]; then
+    if ! csvCheckUniformFieldCount "$source_file"; then
+      echo "Source file: $source_file has inconsistent field counts—append aborted." >&2
+      return 6
+    fi
+    if ! csvCheckUniformFieldCount "$target_file"; then
+      echo "Target file: $target_file has inconsistent field counts—append aborted." >&2
+      return 7
+    fi
+    local src_fields tgt_fields
+    src_fields=$(csvGetNumberOfFields "$source_file" | head -n 1)
+    tgt_fields=$(csvGetNumberOfFields "$target_file" | head -n 1)
+    if [[ "$src_fields" -ne "$tgt_fields" ]]; then
+      echo "Field count mismatch between source and target—append aborted." >&2
+      return 8
+    fi
+  fi
+
+  # Append or simulate
+  if [[ "$dry_run" -eq 1 ]]; then
+    cat "$target_file"
+    sed '1d' "$source_file"
+  else
+    sed '1d' "$source_file" >> "$target_file"
+  fi
+}
+
+#DOC: csvPrepend - prepend CSV data from one file to another
+#DOC:
+#DOC:   NAME
+#DOC:       csvPrepend - prepends records from a source CSV to a target CSV
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:       csvPrepend [-s|--strict] [-n|--dry-run] <source_file> <target_file>
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:       Validates headers between source and target CSVs (ignoring quotes),
+#DOC:       and prepends all non-header rows from source to target just below the target's header.
+#DOC:       If --strict is provided, it additionally verifies:
+#DOC:         - that each file has uniform field counts across all rows
+#DOC:         - that the field count matches between source and target
+#DOC:       If --dry-run is provided, the function prints the resulting merged CSV to stdout
+#DOC:       instead of modifying the target file.
+#DOC:
+#DOC:   OPTIONS
+#DOC:       -s, --strict     Enable structural validation
+#DOC:       -n, --dry-run    Simulate without writing, output result to stdout
+#DOC:
+#DOC:   RETURNS
+#DOC:       0   on success
+#DOC:       1-8 same codes and meanings as csvAppend
+#DOC:      98   if required arguments are missing
+#DOC:      99   for unexpected arguments
+#DOC: 
+csvPrepend() {
+  local strict_mode=0
+  local dry_run=0
+  local source_file target_file
+
+  # Parse flags
+  while [[ "$1" ]]; do
+    case "$1" in
+      -s|--strict)
+        strict_mode=1
+        shift
+        ;;
+      -n|--dry-run)
+        dry_run=1
+        shift
+        ;;
+      *)
+        if [[ -z "$source_file" ]]; then
+          source_file="$1"
+        elif [[ -z "$target_file" ]]; then
+          target_file="$1"
+        else
+          echo "Unexpected argument: $1" >&2
+          return 99
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$source_file" || -z "$target_file" ]]; then
+    echo "Usage: csvPrepend [-s|--strict] [-n|--dry-run] <source_file> <target_file>" >&2
+    return 98
+  fi
+
+  if [[ ! -f "$source_file" ]]; then
+    echo "Source file '$source_file' does not exist." >&2
+    return 1
+  elif [[ ! -r "$source_file" ]]; then
+    echo "Source file '$source_file' is not readable." >&2
+    return 2
+  fi
+
+  if [[ ! -f "$target_file" ]]; then
+    echo "Target file '$target_file' does not exist." >&2
+    return 3
+  elif [[ "$dry_run" -eq 0 && ! -w "$target_file" ]]; then
+    echo "Target file '$target_file' is not writable." >&2
+    return 4
+  fi
+
+  local src_header tgt_header
+  src_header=$(head -n 1 "$source_file" | sed 's/"//g')
+  tgt_header=$(head -n 1 "$target_file" | sed 's/"//g')
+
+  if [[ "$src_header" != "$tgt_header" ]]; then
+    echo "Header mismatch (after quote normalization)—prepend aborted." >&2
+    return 5
+  fi
+
+  if [[ "$strict_mode" -eq 1 ]]; then
+    if ! csvCheckUniformFieldCount "$source_file"; then
+      echo "Source file has inconsistent field counts—prepend aborted." >&2
+      return 6
+    fi
+    if ! csvCheckUniformFieldCount "$target_file"; then
+      echo "Target file has inconsistent field counts—prepend aborted." >&2
+      return 7
+    fi
+    local src_fields tgt_fields
+    src_fields=$(csvGetNumberOfFields "$source_file" | head -n 1)
+    tgt_fields=$(csvGetNumberOfFields "$target_file" | head -n 1)
+    if [[ "$src_fields" -ne "$tgt_fields" ]]; then
+      echo "Field count mismatch between source and target—prepend aborted." >&2
+      return 8
+    fi
+  fi
+
+  if [[ "$dry_run" -eq 1 ]]; then
+    echo "$tgt_header"
+    sed '1d' "$source_file"
+    sed '1d' "$target_file"
+  else
+    local tmp_file
+    tmp_file=$(mktemp)
+    {
+      echo "$tgt_header"
+      sed '1d' "$source_file"
+      sed '1d' "$target_file"
+    } > "$tmp_file"
+    mv "$tmp_file" "$target_file"
+    echo "Prepended records from '$source_file' to '$target_file'."
+  fi
+}
+
 #DOC: csvFilterByField FIELD VALUE FILE
 #DOC:   NAME
 #DOC:        csvFilterByField - print out the lines where a field contains a specific value from a file
@@ -830,3 +1120,5 @@ csvFlattenMultiLineFields() {
 #20250209,UPDATED: csvGetFieldIndex - added options -a -v -o (all,verbose,offset) and used grep instaed of simple equal;ADDED: csvHeader2Index which print fields one pre lined with number, in forma line#:fieldName
 #20250216,ADDED: csvLine2Fields - converts line to fields, one field per line
 #20250530,ADDED: csvRemoveTrailingCommas alias, csvGetNumberOfFields function
+#20250625,ADDED: csvCheckUniformFieldCount, csvAppend
+#20250626,ADDED: csvPrepend
