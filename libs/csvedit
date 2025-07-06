@@ -672,7 +672,7 @@ csvHeader2Index() {
 #DOC:       csvAppend data.csv master.csv
 #DOC:       csvAppend --strict updates.csv data.csv
 #DOC:       csvAppend -sn new.csv report.csv
-
+#DOC: 
 csvAppend() {
   local strict_mode=0
   local dry_run=0

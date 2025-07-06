@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20250505'
+inieditVersion='20250705'
 
 #Version history at the end of the file:
 
@@ -934,9 +934,9 @@ iniSerialize() {
         return 4
     fi
 
-    #remove empty lines
+    #remove empty lines and comments
     local tmpfile=$(mktemp)
-    sed '/^[ \t]*$/ d' $file > $tmpfile
+    sed '/^[ \t]*$/ d' $file | sed '/^#/ d'> $tmpfile
     
     local section=""
     local key=""
@@ -1298,3 +1298,4 @@ iniIdentifyUpdates() {
 #20250328,CORRECTED: iniFindKey parametr filename was incorrectly mapped
 #20250419,UPDATED: removed depndency on textEditAliases library
 #20250505,ADDED: Verbose debug output (output debug info to stdout not only to file)
+#20250705,CORRECTED: iniSerialize removes comment lines
