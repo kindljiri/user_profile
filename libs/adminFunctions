@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250606"
+adminFuncVersion="20250712"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -206,24 +206,24 @@ checkSumFolder() {
 #DOC: 
 compareDirs() {
     # Set initial values for flags
-    local additional=false
-    local missing=false
-    local changed=false
-    local same=false
-    local report=false
-    local useCulture=false
-    local help=false
+    local additional="false"
+    local missing="false"
+    local changed="false"
+    local same="false"
+    local report="false"
+    local useCulture="false"
+    local help="false"
 
     # Parse command line arguments
     while [ "$1" != "" ]; do
         case $1 in
-            -a ) additional=true ;;
-            -m ) missing=true ;;
-            -c ) changed=true ;;
-            -s ) same=true ;;
-            -r ) report=true ;;
-            -UC ) useCulture=true ;;
-            -h | --help ) help=true ;;
+            -a ) additional="true" ;;
+            -m ) missing="true" ;;
+            -c ) changed="true" ;;
+            -s ) same="true" ;;
+            -r ) report="true" ;;
+            -UC ) useCulture="true" ;;
+            -h | --help ) help="true" ;;
             * )
                 if [ -z "$dir1" ]; then
                     local dir1="$1"
@@ -237,7 +237,7 @@ compareDirs() {
         shift
     done
 
-    if [ "$help" = true ]; then
+    if [ "$help" = "true" ]; then
         echo "compareDirs [-a] [-m] [-c] [-s] [-r] [-UC] [-h|--help] DIR1 DIR2"
         echo "  The function takes two arguments, which are the paths to the directories to be compared."
         echo "  It uses the \`checkSumFolder\` function to generate CSVs containing the file paths and hashes"
@@ -262,19 +262,19 @@ compareDirs() {
 
     # If no flags are set, set all flags to true
     if ! $additional && ! $missing && ! $changed && ! $same && ! $report; then
-      additional=true
-      missing=true
-      changed=true
-      same=true
-      report=false
+      additional="true"
+      missing="true"
+      changed="true"
+      same="true"
+      report="false"
     fi
 
     # If the report flag is set, set all other flags to false
     if $report; then
-      additional=false
-      missing=false
-      changed=false
-      same=false
+      additional="false"
+      missing="false"
+      changed="false"
+      same="false"
     fi
 
     # Check if both directories are entered
@@ -315,19 +315,19 @@ compareDirs() {
     (cd "$dir2" && checkSumFolder .) > "$csv2"
 
     # Print additional files in dir1 if -a flag is set
-    if [ "$additional" = true ]; then
+    if [ "$additional" = "true" ]; then
         echo "Additional files in $dir1:"
         comm -23 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
     fi
 
     # Print missing files in dir1 if -m flag is set
-    if [ "$missing" = true ]; then
+    if [ "$missing" = "true" ]; then
         echo "Missing files in $dir1:"
         comm -13 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
     fi
 
     # Print changed files if -c flag is set
-    if [ "$changed" = true ]; then
+    if [ "$changed" = "true" ]; then
         echo "Changed files:"
         while IFS= read -r file; do
             local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
@@ -339,7 +339,7 @@ compareDirs() {
     fi
 
     # Print same files if -s flag is set 
-    if [ "$same" = true ]; then 
+    if [ "$same" = "true" ]; then 
         echo "Same files:"
         while IFS= read -r file; do 
             local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
@@ -351,8 +351,8 @@ compareDirs() {
     fi
 
     # Generate CSV report if -r flag is set
-    if [ "$report" = true ]; then
-      if [ "$useCulture" = true ]; then
+    if [ "$report" = "true" ]; then
+      if [ "$useCulture" = "true" ]; then
         echo "\"file\",\"in dir1 $dir1\",\"in dir2 $dir1\",\"changed\""
       else
         echo "file,in dir1 $dir1,in dir2 $dir1,changed"
@@ -371,10 +371,10 @@ compareDirs() {
             in_dir2=false
             md5_2=""
         fi
-        if [ "$in_dir1" = true ] && [ "$in_dir2" = true ] && [ "$md5_1" != "$md5_2" ]; then
-            changed=true
+        if [ "$in_dir1" = "true" ] && [ "$in_dir2" = "true" ] && [ "$md5_1" != "$md5_2" ]; then
+            changed="true"
         fi
-        if [ "$useCulture" = true ]; then
+        if [ "$useCulture" = "true" ]; then
             echo "\"$file\",\"$in_dir1\",\"$in_dir2\",\"$changed\""
         else
             echo "$file,$in_dir1,$in_dir2,$changed"
@@ -920,3 +920,4 @@ folderFingerprint() {
 #20250526,ADDED: function folderFingerprint - generate hashes of all files recursively within a folder
 #20250601,CORRECTED: checkFolderOwnership - wrong avriable assignemet ' = ' spaces around = 
 #20250606,UPDATED: backupFile - is verbose, returning the backup file name
+#20250712,CORRECTED: compareDirs - small string correctionns

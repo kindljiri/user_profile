@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250626'
+csveditVersion='20250719'
 
 #Version history at the end of the file:
 
@@ -349,7 +349,7 @@ csvLine2Fields() {
   # Initialize state variables
   local state="FIELD"
   local field_starts_index=1
-  local field_end_index=0
+  local field_end_index=2
   local field_number=1
 
   # Loop through preprocessed input
@@ -363,7 +363,12 @@ csvLine2Fields() {
           state="QUOTES"
         elif [ "$char" == ',' ]; then
           field_end_index=$(expr $index - 1)
-          field=$(echo "$csvline" | cut -c${field_starts_index}-${field_end_index})
+          if [ $field_starts_index -ge $field_end_index ] # if field is empty the indexes are same because prev line, except empty first field there line , index is 1 and if we decrease we get 0
+          then
+              field="" #empty field
+          else
+              field=$(echo "$csvline" | cut -c${field_starts_index}-${field_end_index})
+          fi
           if [ $numbered -eq 1 ]; then
             echo "$field_number:$field"
           else
@@ -632,6 +637,97 @@ csvHeader2Index() {
         echo "$index:$line"
         index=$(expr $index + 1)
     done <<< "$header"
+}
+
+#DOC: csvGetField [-n] FIELDNAME FILE
+#DOC:   NAME
+#DOC:        csvGetField - extract a specific field from each line of a CSV file
+#DOC:   SYNOPSIS
+#DOC:        csvGetField [-n] FIELDNAME FILE
+#DOC:        csvGetField -f FIELDNAME -i FILE [-n]
+#DOC:   DESCRIPTION
+#DOC:        csvGetField reads the input CSV FILE, locates the column index of FIELDNAME from the header,
+#DOC:        and prints that field’s value from each line. If the -n flag is provided, it includes line numbers
+#DOC:        in the output (e.g., "1:value", "2:value"). The function checks file validity and depends on
+#DOC:        csvCheckFile, csvGetFieldIndex, and csvLine2Fields helper functions.
+#DOC:   EXAMPLE
+#DOC:        csvGetField -f phone -i users.csv
+#DOC:        555-1234
+#DOC:        555-9876
+#DOC:        csvGetField -n phone users.csv
+#DOC:        1:555-1234
+#DOC:        2:555-9876
+#DOC:   EXIT STATUS
+#DOC:        0  if the field values are successfully extracted and printed
+#DOC:        10 if FIELDNAME or FILE is missing
+#DOC:        >0 error code returned by csvCheckFile if the file is invalid
+#DOC: 
+csvGetField() {
+    local fieldname=""
+    local filename=""
+    local numbered="false"
+
+    # Process arguments
+    while [ "$1" != "" ]; do
+        case $1 in
+            -f | --fieldname )    shift
+                                  fieldname=$1
+                                  ;;
+            -i | --inputfile )    shift
+                                  filename=$1
+                                  ;;
+            -n | --numbered )     numbered='true'
+                                  ;;
+            --help )              echo "Usage: csvGetField [-n] FIELDNAME FILE" >&2
+                                  exit 0
+                                  ;;
+            * )
+                if [ -z "$fieldname" ]; then
+                    fieldname=$1
+                elif [ -z "$filename" ]; then
+                    filename=$1
+                else
+                    echo "Usage: csvGetField [-n] FIELDNAME FILE" >&2
+                    exit 1
+                fi
+        esac
+        shift
+    done
+
+    # Precheck number of arguments
+    if [ -z "$filename" ]; then
+        echo "ERROR: incorrect arguments" >&2
+        echo "Usage: csvGetField [-n] FIELDNAME FILE" >&2
+        return 10
+    fi
+
+    # Precheck number of arguments
+    if [ -z "$fieldname" ]; then
+        echo "ERROR: incorrect arguments" >&2
+        echo "Usage: csvGetField [-n] FIELDNAME FILE" >&2
+        return 10
+    fi
+
+    # File existence and readability check
+    csvCheckFile $filename
+    local fcrv=$?
+
+    if [ $fcrv -ne 0 ]; then
+        return $fcrv
+    fi
+
+    local columnIndex=$(csvGetFieldIndex "$fieldname" "$filename")
+    local counter=1
+    while IFS= read -r line; do
+        field=$(csvLine2Fields "$line" |head -n $columnIndex | tail -n 1)
+        if [ "$numbered" = 'true' ]
+        then
+            echo "$counter:$field"
+            counter=$(expr $counter + 1)
+        else
+            echo "$field"
+        fi
+    done < $filename
 }
 
 #DOC: csvAppend - append CSV data from one file to another
@@ -1122,3 +1218,5 @@ csvFlattenMultiLineFields() {
 #20250530,ADDED: csvRemoveTrailingCommas alias, csvGetNumberOfFields function
 #20250625,ADDED: csvCheckUniformFieldCount, csvAppend
 #20250626,ADDED: csvPrepend
+#20250718,CORRECTED: csvLine2Fields - bug when first field was empty
+#20250719,ADDED: csvGetField - extract a specific field from each line of a CSV file 
