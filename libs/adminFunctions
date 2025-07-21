@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250712"
+adminFuncVersion="20250720"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -311,19 +311,21 @@ compareDirs() {
     # Create temporary files to store checksums of directories
     local csv1=$(mktemp)
     local csv2=$(mktemp)
-    (cd "$dir1" && checkSumFolder .) > "$csv1"
-    (cd "$dir2" && checkSumFolder .) > "$csv2"
 
     # Print additional files in dir1 if -a flag is set
     if [ "$additional" = "true" ]; then
+        (cd "$dir1" && checkSumFolder .) |sort |cut -d',' -f1 > $csv1
+        (cd "$dir2" && checkSumFolder .) |sort |cut -d',' -f1 > $csv2
         echo "Additional files in $dir1:"
-        comm -23 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
+        comm -23 $csv1 $csv2
     fi
 
     # Print missing files in dir1 if -m flag is set
     if [ "$missing" = "true" ]; then
+        (cd "$dir1" && checkSumFolder .) |sort |cut -d',' -f1 > $csv1
+        (cd "$dir2" && checkSumFolder .) |sort |cut -d',' -f1 > $csv2
         echo "Missing files in $dir1:"
-        comm -13 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort)
+        comm -13 $csv1 $csv2
     fi
 
     # Print changed files if -c flag is set
@@ -341,34 +343,34 @@ compareDirs() {
     # Print same files if -s flag is set 
     if [ "$same" = "true" ]; then 
         echo "Same files:"
-        while IFS= read -r file; do 
-            local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
-            local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
-            if [ "$md5_1" = "$md5_2" ]; then 
-                echo "$file"
-            fi
-        done < <(comm -12 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort))
+        (cd "$dir1" && checkSumFolder .) |sort > $csv1
+        (cd "$dir2" && checkSumFolder .) |sort > $csv2
+        cat $csv1 $csv2 | sort | uniq -d | cut -d',' -f1
     fi
 
     # Generate CSV report if -r flag is set
     if [ "$report" = "true" ]; then
+
+      (cd "$dir1" && checkSumFolder .)| sed '1d' > "$csv1"
+      (cd "$dir2" && checkSumFolder .)| sed '1d' > "$csv2"
+
       if [ "$useCulture" = "true" ]; then
         echo "\"file\",\"in dir1 $dir1\",\"in dir2 $dir1\",\"changed\""
       else
         echo "file,in dir1 $dir1,in dir2 $dir1,changed"
       fi
-      while IFS= read -r file; do
-        local in_dir1=true
-        local in_dir2=true
-        local changed=false
+      cat $csv1 $csv2cut -d',' -f1| sort | uniq | while IFS= read -r file; do
+        local in_dir1="true"
+        local in_dir2="true"
+        local changed="false"
         local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
         local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
         if [ -z "$md5_1" ]; then
-            in_dir1=false
+            in_dir1="false"
             md5_1=""
         fi
         if [ -z "$md5_2" ]; then
-            in_dir2=false
+            in_dir2="false"
             md5_2=""
         fi
         if [ "$in_dir1" = "true" ] && [ "$in_dir2" = "true" ] && [ "$md5_1" != "$md5_2" ]; then
@@ -379,11 +381,11 @@ compareDirs() {
         else
             echo "$file,$in_dir1,$in_dir2,$changed"
         fi
-      done < <(sort <(sed '1d' "$csv1" | cut -d',' -f1) <(sed '1d' "$csv2" | cut -d',' -f1) | uniq)
+      done 
     fi
 
     #Clean up
-    rm "$csv1" "$csv2"
+    rm -f "$csv1" "$csv2"
 
 }
 
@@ -921,3 +923,4 @@ folderFingerprint() {
 #20250601,CORRECTED: checkFolderOwnership - wrong avriable assignemet ' = ' spaces around = 
 #20250606,UPDATED: backupFile - is verbose, returning the backup file name
 #20250712,CORRECTED: compareDirs - small string correctionns
+#20250720,CORRECTED: compareDirs - make function POSIX compatible by removing subshell substition as input for while loops or other commands
