@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250719'
+csveditVersion='20250827'
 
 #Version history at the end of the file:
 
@@ -113,43 +113,107 @@ csvCheckFile() {
 #DOC:        cat myCsvFile.csv | csvGetNumberOfFields
 #DOC: 
 csvGetNumberOfFields() {
-  local filename=$1
+  show_lines=0
+  file=""
 
-  if [ -n "$filename" ]; then
-    csvCheckFile "$filename"
-    local checkFileResult=$?
-    if [ $checkFileResult -ne 0 ]; then
-      echo "Usage: csvGetNumberOfFields [FILE]" >&2
-      return $checkFileResult
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n) show_lines=1 ;;
+      --help)
+        echo "Usage: csvGetNumberOfFields [-n] [FILE]" >&2
+        return 0
+        ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        return 2
+        ;;
+      *)
+        if [ -z "$file" ]; then
+          file="$1"
+        else
+          echo "Too many arguments. Usage: csvGetNumberOfFields [-n] [FILE]" >&2
+          return 2
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "$file" ]; then
+    csvCheckFile "$file"
+    checkFileResult=$?
+    if [ "$checkFileResult" -ne 0 ]; then
+      echo "Usage: csvGetNumberOfFields [-n] [FILE]" >&2
+      return "$checkFileResult"
     fi
-    input=$(cat "$filename")
+    input=$(cat "$file")
   else
     input=$(cat)
   fi
 
-  echo "$input" | sed 's/\\"//g' | tr -cd '\n",' | sed 's/",*"//g' | while read -r row; do
-    echo "$row" | wc -c
+  local line_number=1
+
+  echo "$input" | sed 's/\\"//g' | tr -cd '\n",' | sed 's/",*"//g'| tr -d '"' | while read -r row; do
+    if [ $show_lines -eq 1 ]
+    then
+      echo -n "$line_number:"
+      echo "$row" | wc -c
+      line_number=$(expr $line_number + 1)
+    else
+      echo "$row" | wc -c
+    fi
+
   done
 }
 
-#DOC: csvCheckUniformFieldCount [FILE]
+#DOC: csvCheckUniformFieldCount [-v] [FILE]
 #DOC:   NAME
 #DOC:        csvCheckUniformFieldCount - verify all rows in a CSV file have the same number of fields
 #DOC:   SYNOPSIS
-#DOC:        csvCheckUniformFieldCount [FILE]
+#DOC:        csvCheckUniformFieldCount [-v] [FILE]
 #DOC:   DESCRIPTION
 #DOC:        Returns 0 if all rows in the CSV have the same number of fields. Non-zero otherwise.
 #DOC:        If FILE is provided, reads from the file; otherwise, reads from stdin.
+#DOC:        Optional switch:
+#DOC:        -v for verbose output, which prints how many lines have each
 #DOC:   EXAMPLE
 #DOC:        csvCheckUniformFieldCount myCsvFile.csv
 #DOC:        cat myCsvFile.csv | csvCheckUniformFieldCount
 #DOC: 
 csvCheckUniformFieldCount() {
-  local file="$1"
-  local input
+  local verbose=0
+  local return_code=0
+  local file=""
 
-  if [[ -n "$file" ]]; then
-    if [[ ! -f "$file" || ! -r "$file" ]]; then
+  # Parse arguments
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -v) verbose=1 ;;
+      --help)
+        echo "Usage: csvCheckUniformFieldCount [-v] [FILE]" >&2
+        return 0
+        ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        return 2
+        ;;
+      *)
+        if [ -z "$file" ]; then
+          file="$1"
+        else
+          echo "Too many arguments. Usage: csvCheckUniformFieldCount [-v] [FILE]" >&2
+          return 2
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  # Read input
+  if [ -n "$file" ]
+  then
+    if [ ! -f "$file" ] || [ ! -r "$file" ]
+    then
       echo "File '$file' not found or not readable." >&2
       return 1
     fi
@@ -161,12 +225,33 @@ csvCheckUniformFieldCount() {
   local unique_fields
   unique_fields=$(echo "$input" | csvGetNumberOfFields | sort -nu | wc -l)
 
-  if [[ "$unique_fields" -eq 1 ]]; then
-    return 0
+  if [ "$unique_fields" -gt 1 ]
+  then
+    return_code=2
+  fi
+
+  if [ $verbose -eq 1 ]
+  then
+    
+    for fc in $(echo "$input" | csvGetNumberOfFields | sort |uniq -c |sort -rn |sed '1 d' |sed 's/^[ \t]*//'| cut -d' ' -f2); 
+    do 
+      for line_number in $(echo "$input" | csvGetNumberOfFields | grep -n "^${fc}$" | cut -d':' -f1)
+      do
+        line_numbers="${line_numbers} ${line_number}"
+      done
+    done
+
+    for line_number in $(echo "$line_numbers"| tr ' ' '\n' |sed '1 d'|sort -n )
+    do 
+      echo "Line: $line_number"
+      echo "$input" | sed -n "$line_number p"
+    done
+
   else
     echo "Non-uniform number of fields detected." >&2
-    return 2
   fi
+
+  return $return_code
 }
 
 
@@ -237,6 +322,7 @@ csvGetContent() {
 #DOC:        1 if the file contains unbalanced quotes
 #DOC:        2 if there are argument errors
 #DOC:        3 if there are file-related errors
+#DOC: 
 csvContainsUnbalancedQuotes() {
   local verbose=0
   local filename
@@ -268,11 +354,11 @@ csvContainsUnbalancedQuotes() {
   fi
 
   if [ ! -f "$filename" ]; then
-    [ $verbose -eq 1 ] && echo "File not found!" >&2
+    [ $verbose -gt 0 ] && echo "File not found!" >&2
     return 3  # File error
   fi
   if [ ! -r "$filename" ]; then
-    [ $verbose -eq 1 ] && echo "File is not readable!" >&2
+    [ $verbose -gt 0 ] && echo "File is not readable!" >&2
     return 3  # File error
   fi
 
@@ -290,6 +376,99 @@ csvContainsUnbalancedQuotes() {
   done < "$filename"
 
   return $unbalanced
+}
+
+#DOC: csvContainsInvalidUTF8 [-v] FILE
+#DOC:   NAME
+#DOC:        csvContainsInvalidUTF8 - check if a CSV file contains invalid UTF-8 or control characters
+#DOC:   SYNOPSIS
+#DOC:        csvContainsInvalidUTF8 [-v] FILE
+#DOC:   DESCRIPTION
+#DOC:        csvContainsInvalidUTF8 checks whether the specified CSV file contains invalid UTF-8 sequences
+#DOC:        or control characters that may interfere with parsing. It uses iconv to validate encoding and
+#DOC:        tr to detect problematic byte ranges. Optional switches:
+#DOC:        -v for verbose output, which prints diagnostic messages to stderr
+#DOC:   EXAMPLE
+#DOC:        csvContainsInvalidUTF8 myCsvFile.csv
+#DOC:        csvContainsInvalidUTF8 -v myCsvFile.csv
+#DOC:   EXIT STATUS
+#DOC:        0 if the file is not valid UTF-8 and contains problematic control characters
+#DOC:        1 if the file is valid UTF-8 
+#DOC:        2 if there are argument errors
+#DOC:        3 if there are file-related errors
+#DOC: 
+csvContainsInvalidUTF8() { 
+  local verbose=0
+  local filename
+  local invalid_utf=1 #FALSE (All is fine)
+
+  # Process arguments
+  while [ "$1" != "" ]; do
+    case $1 in
+      -v | --verbose )
+        verbose=1
+        ;;
+      --help )
+        echo "Usage: csvContainsInvalidUTF8 [-v] FILE" >&2
+        exit 0
+        ;;
+      * )
+        if [ -z "$filename" ]; then
+          filename=$1
+        else
+          echo "Usage: csvContainsInvalidUTF8 [-v] FILE" >&2
+          return 2  # Argument error
+        fi
+    esac
+    shift
+  done
+
+  if [ -z "$filename" ]; then
+    echo "Usage: csvContainsInvalidUTF8 [-v] FILE" >&2
+    return 2  # Argument error
+  fi
+
+  if [ ! -f "$filename" ]; then
+    [ $verbose -gt 0 ] && echo "File not found!" >&2
+    return 3  # File error
+  fi
+  if [ ! -r "$filename" ]; then
+    [ $verbose -gt 0 ] && echo "File is not readable!" >&2
+    return 3  # File error
+  fi
+
+  local numOfNonASCIIChars=$(tr -cd '\000-\010\013\014\016-\037\200-\237\245-\377' < "$filename" | wc -c)
+
+  # If the file contains non-ASCII characters, check its UTF-8 validity
+  if [ "$numOfNonASCIIChars" -gt 0 ]; then
+    if ! iconv -f utf-8 -t utf-8 "$filename" -o /dev/null 2>/dev/null; then
+      invalid_utf=$numOfNonASCIIChars
+      if [ $verbose -gt 0 ] 
+      then
+        error_output=$(iconv -f utf-8 -t utf-8 "$filename" -o /dev/null 2>&1 >/dev/null)
+        echo "iconv failed to convert file to UTF, $error_output" >&2
+      fi
+    else
+      numOfCtrlChars=$(tr -cd '\000-\010\013\014\016-\017' < "$filename" | wc -c)  
+      if [ "$numOfCtrlChars" -gt 0 ]; then 
+        invalid_utf=$numOfNonASCIIChars
+        if [ $verbose -gt 0 ] 
+        then
+          echo "Contains control characters which might affect parsing"
+        fi
+        
+      fi
+    fi
+  fi  
+  
+  #echo $numOfNonASCIIChars
+  
+  if [ $numOfNonASCIIChars -gt 0 ]
+  then 
+    invalid_utf=0 #TRUE (There are problematic characters)
+  fi
+
+  return $invalid_utf
 }
 
 #DOC: csvLine2Fields [-n] LINE
@@ -629,7 +808,7 @@ csvHeader2Index() {
 
     # Read the header line once and transform commas to newlines
     local header
-    header=$(head -n 1 "$filename" | tr ',' '\n')
+    header=$(head -n 1 "$filename" |tr -d '\r' | tr ',' '\n')
 
     # Print each header field with its corresponding index
     local index=1
@@ -1054,7 +1233,7 @@ csvFilterByField() {
 #DOC:   SYNOPSIS
 #DOC:     csvContainsMultiLinesFields [-v|-vv] FILE
 #DOC:   DESCRIPTION
-#DOC:     This function returns the number of multi-line records in a given CSV file.
+#DOC:     This function output the number of multi-line records in a given CSV file. Return code 0 (If TRUE - contains)
 #DOC:     A multi-line field in a CSV file is a field that contains line breaks.
 #DOC:     Normally, each line in a CSV file represents a single record, with fields separated by a delimiter such as a comma.
 #DOC:     However, sometimes a field may contain line breaks, which means that the record spans multiple lines in the file.
@@ -1075,16 +1254,17 @@ csvFilterByField() {
 #DOC: 
 #DOC:         if csvContainsMultiLinesFields example.csv
 #DOC:         then
-#DOC:           echo "The file example.csv does not contain multi-line record
+#DOC:           echo "The file example.csv does contain multi-line records"        
 #DOC:         else
-#DOC:           echo "The file example.csv does contain multi-line records"
+#DOC:           echo "The file example.csv does not contain multi-line record
 #DOC:         fi
 #DOC: 
 #DOC:         Or as oneliner:
-#DOC:         csv=example.csv; if csvContainsMultiLinesFields $csv; then echo "Not contain multi-line record; else echo "Contain multi-line records"; fi
+#DOC:         csv=example.csv; if csvContainsMultiLinesFields $csv; then echo "Contain multi-line record; else echo "Not contain multi-line records"; fi
 #DOC: 
 csvContainsMultiLinesFields() {
   local verbose=0
+  local return_code=1
   while [ "$#" -gt 0 ]; do
     case "$1" in
       -v) verbose=1; shift ;;
@@ -1097,7 +1277,7 @@ csvContainsMultiLinesFields() {
   then
     echo "Error: No CSV file provided" >&2
     echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
-    return 1
+    return 11
   fi
   
   local csv=$file
@@ -1106,14 +1286,14 @@ csvContainsMultiLinesFields() {
   then
     echo "Error: File $csv does not exist" >&2
     echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
-    return 1
+    return 12
   fi
   
   if [ ! -r "$csv" ]
   then
     echo "Error: File $csv is not readable" >&2
     echo "Usage: csvContainsMultiLinesFields [-v|-vv] FILE" >&2
-    return 1
+    return 13
   fi
   
   local backupIFS=$IFS
@@ -1139,7 +1319,13 @@ csvContainsMultiLinesFields() {
   
   IFS=$backupIFS
   
-  return $count
+  #echo $count
+  if [ $count -gt 0 ]
+  then
+    return_code=1
+  fi
+
+  return $return_code
 }
 
 #DOC: csvFlattenMultiLineFields [-s SEPARATOR] FILE
@@ -1220,3 +1406,7 @@ csvFlattenMultiLineFields() {
 #20250626,ADDED: csvPrepend
 #20250718,CORRECTED: csvLine2Fields - bug when first field was empty
 #20250719,ADDED: csvGetField - extract a specific field from each line of a CSV file 
+#20250818,UPDATED: csvHeader2Index - remove \r from output as it is causing issues while processing by other commands
+#20250822,ADDED: csvContainsInvalidUTF8 - check if file contains invalid UTF-8 characters
+#20250825,UPDATED: csvContainsMultiLinesFields, csvContainsInvalidUTF8 - returns code coresponding to logic of name "true" if it contains multiline fields
+#20250827,UPDATED: csvCheckUniformFieldCount added -v for verbose output
