@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250827'
+csveditVersion='20250828'
 
 #Version history at the end of the file:
 
@@ -100,14 +100,15 @@ csvCheckFile() {
   return 0
 }
 
-#DOC: csvGetNumberOfFields [FILE]
+#DOC: csvGetNumberOfFields [-n] [FILE]
 #DOC:   NAME
 #DOC:        csvGetNumberOfFields - count the number of fields in a CSV row
 #DOC:   SYNOPSIS
-#DOC:        csvGetNumberOfFields [FILE]
-#DOC:   DESCRIPTION
-#DOC:        csvGetNumberOfFields counts the number of fields in each row of a CSV file or standard input.
-#DOC:        If FILE is provided, it reads from the file; otherwise, it reads from stdin.
+#DOC:        csvGetNumberOfFields [-n][FILE]
+#DOC:        Outputs the number of fields for each row in the CSV.
+#DOC:        Optional switch:
+#DOC:        -n to include line numbers in the output
+#DOC:        If FILE is provided, reads from the file; otherwise, reads from stdin.
 #DOC:   EXAMPLE
 #DOC:        csvGetNumberOfFields myCsvFile.csv
 #DOC:        cat myCsvFile.csv | csvGetNumberOfFields
@@ -1410,3 +1411,4 @@ csvFlattenMultiLineFields() {
 #20250822,ADDED: csvContainsInvalidUTF8 - check if file contains invalid UTF-8 characters
 #20250825,UPDATED: csvContainsMultiLinesFields, csvContainsInvalidUTF8 - returns code coresponding to logic of name "true" if it contains multiline fields
 #20250827,UPDATED: csvCheckUniformFieldCount added -v for verbose output
+#20250828,UPDATED: csvGetNumberOfFields  added -n to include line numbers in the output
