@@ -6,7 +6,9 @@ For example wor with certain data formats like CSV or INI
 ## Installation
 
 copy this folder (user_profile) to your home
-copy libs folder (libs) to your home
+```
+git clone https://github.com/kindljiri/user_profile.git
+```
 
 for example: 
 my user is jkindl, hence his home is: /home/jkindl
