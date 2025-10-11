@@ -519,7 +519,7 @@ csvLine2Fields() {
   # Check if there are any quotes, if not we can optimize and just replace , with \n
   if [ $(echo "$preprocessed" | grep '"' | wc -l) -eq 0 ]; then
     if [ $numbered -eq 1 ]; then
-      echo "$csvline" | tr ',' '\n' | nl -s':'
+      echo "$csvline" | tr ',' '\n' | nl -ba -s':' -w1 -nln
     else
       echo "$csvline" | tr ',' '\n'
     fi
@@ -543,7 +543,7 @@ csvLine2Fields() {
           state="QUOTES"
         elif [ "$char" == ',' ]; then
           field_end_index=$(expr $index - 1)
-          if [ $field_starts_index -ge $field_end_index ] # if field is empty the indexes are same because prev line, except empty first field there line , index is 1 and if we decrease we get 0
+          if [ $field_starts_index -gt $field_end_index ] # if field is empty the indexes are same because prev line, except empty first field there line , index is 1 and if we decrease we get 0
           then
               field="" #empty field
           else
@@ -1388,6 +1388,51 @@ csvFlattenMultiLineFields() {
     fi
 }
 
+#DOC: csvNormalizeQoutes FILE
+#DOC:   NAME
+#DOC:        csvNormalizeQoutes - normalize quoting in a CSV file
+#DOC:   SYNOPSIS
+#DOC:        csvNormalizeQoutes FILE
+#DOC:   DESCRIPTION
+#DOC:        csvNormalizeQoutes reads the content of the FILE given as an argument and ensures that every field in every line is properly enclosed in double quotes. 
+#DOC:        The result is printed to stdout unless redirected.
+#DOC:   EXIT STATUS
+#DOC:        0 if the content is successfully printed
+#DOC:        1 if no parameter is entered
+#DOC:        2 if the file doesn't exist
+#DOC:        3 if the file is not readable
+#DOC: 
+csvNormalizeQoutes() {
+    local file="$1"
+
+    if [ -z "$file" ]; then
+        echo "Error: No parameter entered"
+        echo "Usage: csvNormalizeQoutes FILE"
+        return 1
+    elif [ ! -f "$file" ]; then
+        echo "Error: File doesn't exist"
+        echo "Usage: csvNormalizeQoutes FILE"
+        return 2
+    elif [ ! -r "$file" ]; then
+        echo "Error: Cannot read file"
+        echo "Usage: csvNormalizeQoutes FILE"
+        return 3
+    fi
+
+    while IFS= read -r line || [ -n "$line" ]; do
+      quote_count=$(printf '%s\n' "$line" | tr -cd '\\,"' | sed 's/""//g' | wc -c)
+
+      if [ "$quote_count" -gt 1 ]; then
+        # Messy line — go field-by-field
+        csvLine2Fields "$line"  | sed 's/^$/""/' | sed 's/"\?$/"/' | sed 's/^"\?/"/' | paste -sd, -
+      else
+        # Clean line — fast quoting using sed
+        printf '"%s"\n' "$(echo "$line" | tr -d '"' | sed 's/,/","/g')"
+      fi
+    done < "$file"
+}
+
+
 #VERSION HISTORY:
 #20221130,CORRECTED: csvGetFieldIndex and csvFilterByField; didn't work for last field with windows end of the line (correction remove WinOEL)
 #20230419,ADDED: #DOC comments
@@ -1412,3 +1457,5 @@ csvFlattenMultiLineFields() {
 #20250825,UPDATED: csvContainsMultiLinesFields, csvContainsInvalidUTF8 - returns code coresponding to logic of name "true" if it contains multiline fields
 #20250827,UPDATED: csvCheckUniformFieldCount added -v for verbose output
 #20250828,UPDATED: csvGetNumberOfFields  added -n to include line numbers in the output
+#20251010,CORRECTED: csvLine2Fields - priting fields with 1 charcter as empty
+#20251011,ADDED: csvNormalizeQoutes - normalize quoting in a CSV file
