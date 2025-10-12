@@ -1197,7 +1197,7 @@ csvFilterByField() {
   #precheck number of argunents
   if [ $# -gt 3 ]
   then
-    echo 'incorrect arguments'
+    echo 'incorrect arguments' >&2
     return 10
   fi
 
@@ -1357,16 +1357,16 @@ csvFlattenMultiLineFields() {
     done
 
     if [ -z "$file" ]; then
-        echo "Error: No parameter entered"
-        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        echo "Error: No parameter entered" >&2
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE" >&2
         return 1
     elif [ ! -f "$file" ]; then
-        echo "Error: File doesn't exist"
-        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        echo "Error: File doesn't exist" >&2
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE" >&2
         return 2
     elif [ ! -r "$file" ]; then
-        echo "Error: Cannot read file"
-        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE"
+        echo "Error: Cannot read file" >&2
+        echo "Usage: csvFlattenMultiLineFields [-s SEPARATOR] FILE" >&2
         return 3
     fi
 
@@ -1406,16 +1406,16 @@ csvNormalizeQoutes() {
     local file="$1"
 
     if [ -z "$file" ]; then
-        echo "Error: No parameter entered"
-        echo "Usage: csvNormalizeQoutes FILE"
+        echo "Error: No parameter entered" >&2
+        echo "Usage: csvNormalizeQoutes FILE" >&2
         return 1
     elif [ ! -f "$file" ]; then
-        echo "Error: File doesn't exist"
-        echo "Usage: csvNormalizeQoutes FILE"
+        echo "Error: File doesn't exist" >&2
+        echo "Usage: csvNormalizeQoutes FILE" >&2
         return 2
     elif [ ! -r "$file" ]; then
-        echo "Error: Cannot read file"
-        echo "Usage: csvNormalizeQoutes FILE"
+        echo "Error: Cannot read file" >&2
+        echo "Usage: csvNormalizeQoutes FILE" >&2
         return 3
     fi
 
@@ -1459,3 +1459,4 @@ csvNormalizeQoutes() {
 #20250828,UPDATED: csvGetNumberOfFields  added -n to include line numbers in the output
 #20251010,CORRECTED: csvLine2Fields - priting fields with 1 charcter as empty
 #20251011,ADDED: csvNormalizeQoutes - normalize quoting in a CSV file
+#20251012,CORRECTED: csvFlattenMultiLineFields, csvNormalizeQoutes - error messages go to stderr
