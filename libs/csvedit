@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 csveditAuthor='Jiri Kindl'
-csveditVersion='20250828'
+csveditVersion='20251015'
 
 #Version history at the end of the file:
 
@@ -1406,30 +1406,35 @@ csvNormalizeQoutes() {
     local file="$1"
 
     if [ -z "$file" ]; then
-        echo "Error: No parameter entered" >&2
-        echo "Usage: csvNormalizeQoutes FILE" >&2
-        return 1
+        # Read from stdin
+        input="/dev/stdin"
     elif [ ! -f "$file" ]; then
         echo "Error: File doesn't exist" >&2
-        echo "Usage: csvNormalizeQoutes FILE" >&2
+        echo "Usage: csvNormalizeQoutes [FILE]" >&2
         return 2
     elif [ ! -r "$file" ]; then
         echo "Error: Cannot read file" >&2
-        echo "Usage: csvNormalizeQoutes FILE" >&2
+        echo "Usage: csvNormalizeQoutes [FILE]" >&2
         return 3
+    else
+        input="$file"
     fi
 
     while IFS= read -r line || [ -n "$line" ]; do
-      quote_count=$(printf '%s\n' "$line" | tr -cd '\\,"' | sed 's/""//g' | wc -c)
+        quote_count=$(printf '%s\n' "$line" | tr -cd '\\,"' | sed 's/""//g' | wc -c)
 
-      if [ "$quote_count" -gt 1 ]; then
-        # Messy line — go field-by-field
-        csvLine2Fields "$line"  | sed 's/^$/""/' | sed 's/"\?$/"/' | sed 's/^"\?/"/' | paste -sd, -
-      else
-        # Clean line — fast quoting using sed
-        printf '"%s"\n' "$(echo "$line" | tr -d '"' | sed 's/,/","/g')"
-      fi
-    done < "$file"
+        if [ "$quote_count" -gt 1 ]; then
+            # Messy line — go field-by-field
+            csvLine2Fields "$line" \
+                | sed 's/^$/""/' \
+                | sed 's/"\?$/"/' \
+                | sed 's/^"\?/"/' \
+                | paste -sd, -
+        else
+            # Clean line — fast quoting using sed
+            printf '"%s"\n' "$(echo "$line" | tr -d '"' | sed 's/,/","/g')"
+        fi
+    done < "$input"
 }
 
 
@@ -1460,3 +1465,4 @@ csvNormalizeQoutes() {
 #20251010,CORRECTED: csvLine2Fields - priting fields with 1 charcter as empty
 #20251011,ADDED: csvNormalizeQoutes - normalize quoting in a CSV file
 #20251012,CORRECTED: csvFlattenMultiLineFields, csvNormalizeQoutes - error messages go to stderr
+#20251015,UPDATED: csvNormalizeQoutes - input from stdin
