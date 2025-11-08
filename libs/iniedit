@@ -7,7 +7,7 @@
 # Library of functions to manipulate ini files
 #Variables:
 inieditAuthor='Jiri Kindl'
-inieditVersion='20250705'
+inieditVersion='20251108'
 
 #Version history at the end of the file:
 
@@ -934,6 +934,9 @@ iniSerialize() {
         return 4
     fi
 
+    #swtich off the special char expantion as for example * because those chars can be part of the file
+    set -o noglob
+
     #remove empty lines and comments
     local tmpfile=$(mktemp)
     sed '/^[ \t]*$/ d' $file | sed '/^#/ d'> $tmpfile
@@ -993,6 +996,9 @@ iniSerialize() {
     if [ -n "$value" ]; then # print the last key-value pair, if any 
         echo "[$section]:$key=$value"
     fi
+
+    #swtich on the special char expantion 
+    set +o noglob
 
     rm -f $tmpfile
     return 0 # success!
@@ -1299,3 +1305,4 @@ iniIdentifyUpdates() {
 #20250419,UPDATED: removed depndency on textEditAliases library
 #20250505,ADDED: Verbose debug output (output debug info to stdout not only to file)
 #20250705,CORRECTED: iniSerialize removes comment lines
+#20251108,CORRECTED: iniSerialize expanding special characters like $, \ or *
