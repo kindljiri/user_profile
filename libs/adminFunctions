@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20250720"
+adminFuncVersion="20251203"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -330,14 +330,17 @@ compareDirs() {
 
     # Print changed files if -c flag is set
     if [ "$changed" = "true" ]; then
+        (cd "$dir1" && checkSumFolder .) |sort > $csv1
+        (cd "$dir2" && checkSumFolder .) |sort > $csv2
         echo "Changed files:"
-        while IFS= read -r file; do
+        cat $csv1 $csv2 | cut -d',' -f1 | sort | uniq -d|while IFS= read -r file; do
             local md5_1=$(grep "^$file," "$csv1" | cut -d',' -f2)
             local md5_2=$(grep "^$file," "$csv2" | cut -d',' -f2)
             if [ "$md5_1" != "$md5_2" ]; then
                 echo "$file"
             fi
-        done < <(comm -12 <(cut -d',' -f1 "$csv1" | sort) <(cut -d',' -f1 "$csv2" | sort))
+        done
+        
     fi
 
     # Print same files if -s flag is set 
@@ -923,4 +926,4 @@ folderFingerprint() {
 #20250601,CORRECTED: checkFolderOwnership - wrong avriable assignemet ' = ' spaces around = 
 #20250606,UPDATED: backupFile - is verbose, returning the backup file name
 #20250712,CORRECTED: compareDirs - small string correctionns
-#20250720,CORRECTED: compareDirs - make function POSIX compatible by removing subshell substition as input for while loops or other commands
+#20251202,CORRECTED: compareDirs - make function POSIX compatible by removing subshell substition as input for while loops or other commands
