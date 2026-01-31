@@ -1,4 +1,4 @@
-profileVersion='20250426'
+profileVersion='20260121'
 
 profileHelpLF() {
     local libraryFunctions libraryFile
@@ -12,10 +12,10 @@ profileHelpLF() {
             echo "Error: Library '$libraryFunctions' not found. You can list available libraries using the '-ll' or '--listLibraries' option."
         fi
     else
-        while read -r libraryFile; do
+        grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //'| while read -r libraryFile; do
             libraryFile="${libraryFile/#\~/$HOME}"
             grep "#DOC:   NAME" $libraryFile -A 1 | grep -v "#DOC:   NAME" | grep -v "^--" | sed 's/#DOC:[ \t]*//'
-        done < <(grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //')
+        done
     fi
 }
 
@@ -51,12 +51,12 @@ profileHelpFH() {
 
 profileHelpLL() {
     local libraryFile libraryName libraryDescription
-    while read -r libraryFile; do
+    grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //'| while read -r libraryFile; do
         libraryFile="${libraryFile/#\~/$HOME}"
         libraryName=$(grep -h "^#DOC: LIBRARY NAME:" $libraryFile | sed 's/^#DOC: LIBRARY NAME:[ \t]*//')
         libraryDescription=$(grep "^#DOC: DESCRIPTION:" $libraryFile | sed 's/^#DOC: DESCRIPTION:[ \t]*//')
         printf "%s\n  %s\n\n" "$libraryName" "$libraryDescription"
-    done < <(grep -h "^\. ~" ~/user_profile/.*_profile | sed 's/^\. //')
+    done 
 }
 
 profileHelpLH() {
@@ -177,6 +177,7 @@ echo "User profile loading libraries..."
 . ~/user_profile/libs/convertDataLib
 . ~/user_profile/libs/compareLists
 . ~/user_profile/libs/networkTroubleshooting
+. ~/user_profile/libs/pemTools
 
 #Loading Bash Autocompletion libs
 . ~/user_profile/libs/adminBashAutoComplete

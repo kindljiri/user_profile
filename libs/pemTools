@@ -1,0 +1,576 @@
+#! /bin/sh
+
+#Library to explore pem files from Command line
+#This Library below contains its own documentation just do:
+#grep "#DOC: " pemTools | sed 's/[ \t]*#DOC://'
+
+# Library of functions to explore pem files (SSL Certificates, Keys, etc)
+#Variables:
+inieditAuthor='Jiri Kindl'
+inieditVersion='20260131'
+
+#Version history at the end of the file:
+
+#DOC: LIBRARY NAME: pemTools
+#DOC: DESCRIPTION: Library of functions to explore pem files (SSL Certificates, Keys, etc)
+#DOC: 
+
+###############################################################################
+#                                                                             #
+#                  PUBLIC FUNCTIONS                                           #
+#                                                                             #
+###############################################################################
+
+#DOC: pemNumberOfObjects
+#DOC:   NAME
+#DOC:     pemNumberOfObjects - count PEM objects in a file or stdin
+#DOC:   SYNOPSIS
+#DOC:     pemNumberOfObjects [file]
+#DOC:   DESCRIPTION
+#DOC:     Counts the number of PEM objects in the provided file.
+#DOC:     If no file is given, the function reads from stdin.
+#DOC:     A PEM object is detected by matching BEGIN headers of the form:
+#DOC:       -----BEGIN <TYPE>-----
+#DOC:     The function is stream-safe when used with stdin and avoids
+#DOC:     multiple reads by capturing input once.
+#DOC:   RETURN VALUE
+#DOC:     Prints the number of PEM objects found.
+#DOC: 
+pemNumberOfObjects() {
+    local file=$1
+    # Read stdin into a variable once 
+    if [ -z "$file" ]
+    then
+        data=$(cat)
+    else
+        data=$(cat $file)
+    fi
+
+    echo "$data"|grep -E "^-----BEGIN\ ([A-Z0-9\ \-]+)-----$" | wc -l
+}
+
+#DOC: pemSplit
+#DOC:   NAME
+#DOC:     pemSplit - split a PEM bundle into individual PEM object files
+#DOC:   SYNOPSIS
+#DOC:     pemSplit <file>
+#DOC:   DESCRIPTION
+#DOC:     Splits a PEM bundle containing multiple PEM objects into separate files.
+#DOC:     Each extracted object is written to:
+#DOC:       <file>.d/obj<N>.pem
+#DOC:     where <N> is an incrementing index starting at 1.
+#DOC:
+#DOC:     The function determines object boundaries by scanning for matching
+#DOC:     BEGIN/END PEM headers. If the input file contains only one PEM object,
+#DOC:     the function prints an error message and returns non-zero.
+#DOC:
+#DOC:     The output directory <file>.d/ is created automatically if needed.
+#DOC:
+#DOC:   RETURN VALUE
+#DOC:     0  if the file contains more than one PEM object and splitting succeeds
+#DOC:     1  if the file is not a PEM bundle (contains only one object)
+#DOC: 
+pemSplit() {
+    local infile=$1
+    local idx=1
+
+    if [ $(pemNumberOfObjects $infile) -gt 1 ]
+    then
+        mkdir -p ${infile}.d/
+        for block in $(grep -En "^-----BEGIN\ ([A-Z0-9\ \-]+)-----$|^-----END\ ([A-Z0-9\ \-]+)-----$" "$infile" | sed 's/:-----BEGIN.*/,/'| sed 's/:-----END.*/E/' | tr -d '\n' | tr 'E' '\n')
+        do
+            sed -n "$block p" "$infile" > "${infile}.d/obj$idx.pem"
+            idx=$(expr $idx + 1)
+        done
+        return 0
+    else
+        echo "pemSplit: $infile is not a PEM bundle" >&2
+        return 1
+    fi
+
+}
+
+#DOC: pemGetExpirationEpoch
+#DOC:   NAME
+#DOC:     pemGetExpirationEpoch - extract certificate expiration time as epoch seconds
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:     pemGetExpirationEpoch <file>
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:     Returns the expiration time (NotAfter) of each certificate found in the
+#DOC:     provided PEM file, expressed as Unix epoch seconds.
+#DOC:
+#DOC:     If the file contains multiple PEM objects, the function scans each object
+#DOC:     and prints the expiration epoch for every PEM block whose type is:
+#DOC:         -----BEGIN CERTIFICATE-----
+#DOC:
+#DOC:     If the file contains only a single PEM object, the function extracts and
+#DOC:     prints its expiration epoch directly using openssl.
+#DOC:
+#DOC:     Non-certificate PEM objects (keys, CSRs, etc.) are ignored.
+#DOC:
+#DOC:   RETURN VALUE
+#DOC:     Prints one epoch timestamp per certificate found.
+#DOC:     Returns 0 on success.
+#DOC:     Returns non-zero only if openssl fails to parse the certificate.
+#DOC: 
+pemGetExpirationEpoch(){
+    local infile=$1
+    local idx=1
+
+    if [ $(pemNumberOfObjects "$infile") -gt 1 ]
+    then
+        for block in $(grep -En "^-----BEGIN\ ([A-Z0-9\ \-]+)-----$|^-----END\ ([A-Z0-9\ \-]+)-----$" $infile | sed 's/:-----BEGIN.*/,/'| sed 's/:-----END.*/E/' | tr -d '\n' | tr 'E' '\n')
+        do
+            if sed -n "$block p" "$infile" | grep -q "BEGIN CERTIFICATE"; 
+            then 
+                exp_date=$(sed -n "$block p" "$infile" | openssl x509 -noout -enddate -in - 2>/dev/null)
+                exp_epoch=$(date -d "$exp_date" +%s 2>/dev/null)
+                echo $exp_epoch
+            fi
+        done
+    else
+        exp_date=$(openssl x509 -enddate -noout -in "$infile" | cut -d'=' -f2-)
+        exp_epoch=$(date -d "$exp_date" +%s 2>/dev/null)
+        echo $exp_epoch
+    fi
+}
+
+#DOC: pemGetType
+#DOC:   NAME
+#DOC:     pemGetType - classify a PEM object or PEM bundle
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:     pemGetType [file]
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:     Determines the type of a PEM object by inspecting its BEGIN header.
+#DOC:     If no file is provided, the function reads from stdin.
+#DOC:
+#DOC:     When the input contains multiple PEM objects, the function:
+#DOC:       1. Detects each BEGIN header
+#DOC:       2. Recursively classifies each object
+#DOC:       3. Returns a combined type in the form:
+#DOC:            pem-bundle[type1,type2,...]
+#DOC:
+#DOC:     Supported single-object classifications include:
+#DOC:       - certificate
+#DOC:       - encrypted-private-key
+#DOC:       - private-key
+#DOC:       - rsa-private-key
+#DOC:       - ec-private-key
+#DOC:       - public-key
+#DOC:       - dh-parameters
+#DOC:       - openssh-public-key
+#DOC:
+#DOC:     If no known header pattern matches, the function returns "unknown".
+#DOC:
+#DOC:   RETURN VALUE
+#DOC:     Prints the detected type or bundle description.
+#DOC:     Always returns 0; classification failures result in "unknown".
+#DOC: 
+pemGetType() {
+    local file="$1"
+    local pem_type=''
+    local data=''
+    
+    # Read stdin into a variable once 
+    if [ -z "$file" ]
+    then
+        data=$(cat)
+    else
+        data=$(cat $file)
+    fi
+
+    # If multiple objects → recurse
+    if [ "$(echo "$data"|pemNumberOfObjects)" -gt 1 ]; then
+        oldIFS="$IFS"
+        IFS=$'\n'
+        
+        # Extract each block and recurse
+        for pem_object in $(echo "$data" |grep -E "^-----BEGIN\ ([A-Z0-9\ \-]+)-----$") 
+        do
+           #echo "DEBUG: pem_object: $pem_object"
+           pem_type="${pem_type}$(echo "${pem_object}" | pemGetType),"
+           #echo "DEBUG: pem_type: $pem_type"
+        done
+        IFS="$oldIFS"
+
+        pem_type="pem-bundle[$(echo "$pem_type"| sed 's/,$//')]"
+        echo $pem_type
+        return
+    fi
+
+    # Single-object classification
+    if echo "$data"|grep -q "BEGIN CERTIFICATE"; then
+        echo "certificate"
+    elif echo "$data"|grep -q "BEGIN ENCRYPTED PRIVATE KEY" ; then
+        echo "encrypted-private-key"
+    elif echo "$data"|grep -q "BEGIN PRIVATE KEY" ; then
+       echo "private-key"
+    elif echo "$data"|grep -q "BEGIN RSA PRIVATE KEY" ; then
+        echo "rsa-private-key"
+    elif echo "$data"|grep -q "BEGIN EC PRIVATE KEY" ; then
+        echo "ec-private-key"
+    elif echo "$data"|grep -q "BEGIN PUBLIC KEY" ; then
+        echo "public-key"
+    elif echo "$data"|grep -q "BEGIN DH PARAMETERS" ; then
+        echo "dh-parameters"
+    elif echo "$data"|grep -qE "^(ssh-(rsa|ed25519)|ecdsa-sha2)" ; then
+        echo "openssh-public-key"
+    else
+        echo "unknown"
+    fi
+
+}
+
+#DOC: pemFindPrivKey
+#DOC:   NAME
+#DOC:     pemFindPrivKey - locate the private key matching a certificate
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:     pemFindPrivKey <certificate.pem>
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:     Searches for the private key corresponding to the given certificate.
+#DOC:     The function extracts the public key from the certificate and compares
+#DOC:     it against the public key derived from each private key found in the
+#DOC:     same directory.
+#DOC:
+#DOC:     The following private key types are considered:
+#DOC:       - rsa-private-key
+#DOC:       - ec-private-key
+#DOC:       - private-key (PKCS#8)
+#DOC:
+#DOC:     Matching is performed by comparing the full public key text output from:
+#DOC:         openssl x509 -pubkey
+#DOC:         openssl pkey -pubout
+#DOC:
+#DOC:     Only files in the certificate's directory are scanned. Filenames ending
+#DOC:     in .pem or containing the substring "key" are inspected.
+#DOC:
+#DOC:   RETURN VALUE
+#DOC:     Prints the path to the matching private key and returns 0 on success.
+#DOC:     Returns 1 if:
+#DOC:       - the certificate file does not exist
+#DOC:       - no matching private key is found
+#DOC:       - openssl fails to extract the public key
+#DOC: 
+pemFindPrivKey() {
+    local CERT="$1"
+    local dir cert_pub key key_pub
+
+    [ -f "$CERT" ] || return 1
+
+    dir=$(dirname "$CERT")
+
+    # Extract public key from certificate
+    cert_pub=$(openssl x509 -in "$CERT" -noout -pubkey 2>/dev/null) || return 1
+
+    # Scan directory for private keys
+    for key in "$dir"/*.pem "$dir"/*key*; do
+        [ -f "$key" ] || continue
+
+        case "$(pemGetType "$key")" in
+            rsa-private-key|ec-private-key|private-key)
+                key_pub=$(openssl pkey -in "$key" -pubout 2>/dev/null) || continue
+
+                if [ "$cert_pub" = "$key_pub" ]; then
+                    printf "%s\n" "$key"
+                    return 0
+                fi
+                ;;
+        esac
+    done
+
+    return 1
+}
+
+#DOC: pemFindCA
+#DOC:   NAME
+#DOC:     pemFindCA - identify the issuing CA certificate for a given certificate
+#DOC:
+#DOC:   SYNOPSIS
+#DOC:     pemFindCA <certificate.pem> [search_directory]
+#DOC:
+#DOC:   DESCRIPTION
+#DOC:     Attempts to locate the CA certificate that issued the provided certificate.
+#DOC:
+#DOC:     If no search directory is specified, the directory containing the
+#DOC:     certificate is used as the search scope.
+#DOC:
+#DOC:     The function:
+#DOC:       1. Confirms the input is a certificate (via pemGetType)
+#DOC:       2. Scans the search directory for *.pem files
+#DOC:       3. Filters out non-certificate PEM files
+#DOC:       4. Uses 'openssl verify -CAfile <candidate> <cert>' to test whether
+#DOC:          the candidate certificate can validate the input certificate
+#DOC:
+#DOC:     The first CA certificate that successfully verifies the input is printed.
+#DOC:
+#DOC:   RETURN VALUE
+#DOC:     Prints the path to the matching CA certificate and returns 0 on success.
+#DOC:     Returns 1 if:
+#DOC:       - the input is not a certificate
+#DOC:       - no CA certificate in the directory validates the input
+#DOC:
+#DOC:     If no match is found, the function prints "Unknown".
+#DOC: 
+pemFindCA() {
+    local CERT="$1"
+    local BASEDIR="$2"
+    local CA="Unknown"
+    local type
+
+    # Default BASEDIR to directory of CERT
+    if [ -z "$BASEDIR" ]; then
+        BASEDIR=$(dirname "$CERT")
+    fi
+
+    # 1) Determine type of input
+    type=$(pemGetType "$CERT")
+
+    case "$type" in
+        certificate)
+            # Single certificate 
+            local oldIFS="$IFS"
+            IFS=$'\n'
+
+            for CA in $(find "$BASEDIR" -maxdepth 1 -type f -name "*.pem"); do
+                if [ "$CA" = "$CERT" ] || [ "$(pemGetType "$CA")" != "certificate" ]; then
+                    continue
+                fi
+
+                if openssl verify -CAfile "$CA" "$CERT" 2>/dev/null | grep -q ": OK"; then
+                    echo "$CA"
+                    IFS="$oldIFS"
+                    return 0
+                fi
+            done
+
+            IFS="$oldIFS"
+
+            ;;
+        *)
+            printf "pemFindCA: '%s' is not a certificate, but '%s'\n" "$CERT" "$type">&2
+            return 1
+            ;;
+    esac
+
+    echo "Unknown"
+}
+
+#DOC: pemGetCertType
+#DOC:   NAME
+#DOC:     pemGetCertType - classify a certificate as self-signed or CA-signed
+#DOC: 
+#DOC:   SYNOPSIS
+#DOC:     pemGetCertType <certificate.pem>
+#DOC: 
+#DOC:   DESCRIPTION
+#DOC:     Determines whether the provided certificate is self-signed or issued
+#DOC:     by another certificate in the same directory.
+#DOC: 
+#DOC:     The function:
+#DOC:       1. Uses pemGetType to confirm the input is a certificate.
+#DOC:       2. Checks if the certificate verifies itself using:
+#DOC:            openssl verify -CAfile <cert> <cert>
+#DOC:          If verification succeeds, the certificate is considered self-signed.
+#DOC:       3. If not self-signed, the function calls pemFindCA to locate a
+#DOC:          certificate in the same directory that can validate it.
+#DOC: 
+#DOC:     The result is printed in one of the following forms:
+#DOC:       - "self-signed"
+#DOC:       - "ca-signed:<path-to-ca>"
+#DOC: 
+#DOC:   RETURN VALUE
+#DOC:     Prints the certificate classification and returns 0 on success.
+#DOC:     Returns 1 if the input is not a certificate or cannot be classified.
+#DOC: 
+pemGetCertType() {
+    local CERT="$1"
+    #local BASEDIR="$2"
+
+    # Determine type
+    local type
+    type=$(pemGetType "$CERT")
+
+    # Must be a certificate or a bundle containing a certificate
+    case "$type" in
+        certificate) 
+            # 1) Self-signed?
+            if openssl verify -CAfile "$CERT" "$CERT" 2>/dev/null | grep -q ": OK"; then
+                echo "self-signed"
+                return 0
+            fi
+
+            # 2) Try to find a CA that signs this cert
+            CA=$(pemFindCA "$CERT")
+            echo "ca-signed:$CA"
+            ;;
+        *)
+            printf "pemFindCA: '%s' is not a certificate, but '%s'\n" "$CERT" "$type">&2
+            return 1
+            ;;
+    esac    
+
+}
+
+#DOC: pem2xml
+#DOC:   NAME
+#DOC:     pem2xml - convert a PEM object (or bundle) into structured XML
+#DOC: 
+#DOC:   SYNOPSIS
+#DOC:     pem2xml <file>
+#DOC: 
+#DOC:   DESCRIPTION
+#DOC:     Dispatches PEM-to-XML conversion based on the detected PEM object type.
+#DOC:     Bundle handling allows multi-object PEM files to be converted into a
+#DOC:     composite XML structure, with each object processed individually.
+#DOC: 
+#DOC:   RETURN VALUE
+#DOC:     Returns 0 on successful conversion.
+#DOC:     Returns 1 if the PEM type is unsupported or cannot be classified.
+#DOC: 
+pem2xml() {
+    local INPUT="$1"
+    local type
+
+    type=$(pemGetType "$INPUT")
+
+    case "$type" in
+        certificate)
+            _pem2xml_certificate "$INPUT"
+            ;;
+        rsa-private-key|ec-private-key|private-key)
+            _pem2xml_private_key "$INPUT"
+            ;;
+        public-key)
+            _pem2xml_public_key "$INPUT"
+            ;;
+        pem-bundle*)
+            _pem2xml_bundle "$INPUT"
+            ;;
+        *)
+            printf "pem2xml: unsupported PEM object '%s'\n" "$INPUT" >&2
+            return 1
+            ;;
+    esac
+}
+
+###############################################################################
+#                                                                             #
+#                  PRIVATE FUNCTIONS                                          #
+#                                                                             #
+###############################################################################
+
+_pem2xml_certificate() {
+    local CERT="$1"
+
+    local subject issuer notBefore notAfter keyType keyBits
+    local serial fp256 fp1
+
+    subject=$(openssl x509 -in "$CERT" -noout -subject | sed 's/^subject= //')
+    issuer=$(openssl x509 -in "$CERT" -noout -issuer | sed 's/^issuer= //')
+    notBefore=$(openssl x509 -in "$CERT" -noout -startdate | cut -d= -f2)
+    notAfter=$(openssl x509 -in "$CERT" -noout -enddate | cut -d= -f2)
+
+    keyType=$(openssl x509 -in "$CERT" -noout -text | grep 'Public Key Algorithm' | awk -F: '{print $2}' | xargs)
+    keyBits=$(openssl x509 -in "$CERT" -noout -text | grep 'Public-Key' | sed 's/.*(\([0-9]*\) bit).*/\1/')
+
+    serial=$(openssl x509 -in "$CERT" -noout -serial | cut -d= -f2)
+    fp256=$(openssl x509 -in "$CERT" -noout -fingerprint -sha256 | cut -d= -f2)
+    fp1=$(openssl x509 -in "$CERT" -noout -fingerprint -sha1 | cut -d= -f2)
+    
+    cert_type=$(pemGetCertType "$CERT")
+    key_file=$(pemFindPrivKey "$CERT")
+
+    echo "<certificate>"
+    echo "  <certType>$cert_type</certType>"
+    echo "  <subject>$subject</subject>"
+    echo "  <issuer>$issuer</issuer>"
+    echo "  <serial>$serial</serial>"
+    echo "  <notBefore>$notBefore</notBefore>"
+    echo "  <notAfter>$notAfter</notAfter>"
+    echo "  <keyType>$keyType</keyType>"
+    echo "  <keyBits>$keyBits</keyBits>"
+    echo "  <keyFile>$key_file</keyFile>"
+    echo "  <subjectAltName>"
+
+    local oldIFS="$IFS"
+    IFS=$'\n'
+    sans=$(openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null | sed -n '/Subject Alternative Name:/,/^[^ ]/p' | sed '1d'| tr ',' '\n'|sed 's/^[ \t]*//')
+    for san in $sans
+    do
+      san_type=$(echo "$san"|cut -d: -f1)
+      san_value=$(echo "$san"|cut -d: -f2)
+      echo "    <$san_type>$san_value</$san_type>"
+    done
+    IFS="$oldIFS"
+
+    ku=$(openssl x509 -in "$CERT" -noout -text | sed -n '/X509v3 Key Usage/,/X509v3/p' | sed '1d;$d' | tr ',' '\n' | sed 's/^ *//;s/ *$//')
+    echo "  <keyUsage>"
+    printf "%s\n" "$ku" | while IFS= read -r u; do
+        [ -n "$u" ] && echo "    <usage>$u</usage>"
+    done
+    echo "  </keyUsage>"
+
+    eku=$(openssl x509 -in "$CERT" -noout -text | sed -n '/X509v3 Extended Key Usage/,/X509v3/p' | sed '1d;$d' | tr ',' '\n' | sed 's/^ *//;s/ *$//')
+    echo "  <extendedKeyUsage>"
+    printf "%s\n" "$eku" | while IFS= read -r u; do
+        [ -n "$u" ] && echo "    <usage>$u</usage>"
+    done
+    echo "  </extendedKeyUsage>"
+
+    echo "  </subjectAltName>"
+    echo "  <fingerprints>"
+    echo "    <sha256>$fp256</sha256>"
+    echo "    <sha1>$fp1</sha1>"
+    echo "  </fingerprints>"
+    echo "</certificate>"
+}
+
+
+_pem2xml_bundle() {
+    local BUNDLE="$1"
+    local dir
+
+    pemSplit "$BUNDLE"
+
+    dir="${BUNDLE}.d"
+
+    echo "<bundle>"
+
+    for f in "$dir"/*.pem; do
+        local t
+        t=$(pemGetType "$f")
+        echo "  <object file=\"$(basename "$f")\" type=\"$t\">"
+        pem2xml "$f" | sed 's/^/    /'
+        echo "  </object>"
+    done
+
+    echo "</bundle>"
+}
+
+_pem2xml_private_key() {
+    local KEY="$1"
+
+    echo "<privateKey>"
+    echo "  <type>$(pemGetType "$KEY")</type>"
+    echo "  <bits>$(openssl pkey -in "$KEY" -noout -text 2>/dev/null | grep 'Private-Key' | sed 's/.*(\([0-9]*\) bit).*/\1/')</bits>"
+    echo "</privateKey>"
+}
+
+_pem2xml_public_key() {
+    local KEY="$1"
+
+    echo "<publicKey>"
+    echo "  <type>public-key</type>"
+    echo "  <bits>$(openssl pkey -pubin -in "$KEY" -noout -text 2>/dev/null | grep 'Public-Key' | sed 's/.*(\([0-9]*\) bit).*/\1/')</bits>"
+    echo "</publicKey>"
+}
+
+#VERSION HISTORY
+#Version,Comments
+#20260131,Initial version
