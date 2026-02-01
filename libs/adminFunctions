@@ -3,7 +3,7 @@
 #This Library below contains its own documentation just do:
 #grep "#DOC: " adminFunctions | sed 's/[ \t]*#DOC://'
 
-adminFuncVersion="20251203"
+adminFuncVersion="20260201"
 
 #DOC: LIBRARY NAME: adminFunctions
 #DOC: DESCRIPTION: Library of usefull functions for admins  
@@ -549,12 +549,12 @@ alias +x="chmod +x"
 #DOC:   DESCRIPTION
 #DOC:     The getCPUCount function returns the number of processors on the system by counting the number of 'processor' entries in /proc/cpuinfo.
 #DOC: 
-alias getCPUCount="cat /proc/cpuinfo | grep 'processor'|wc -l"
+alias getCPUCount="grep 'processor' /proc/cpuinfo |wc -l"
 
 #DOC: getCPUSpeed
 #DOC:   Get the CPU speed in MHz
 #DOC: 
-alias getCPUSpeed="cat /proc/cpuinfo | grep 'cpu MHz'|tail -1|sed 's/[ \t]\+/ /g'| cut -d' ' -f4"
+alias getCPUSpeed="grep 'cpu MHz' /proc/cpuinfo|tail -1|sed 's/[ \t]\+/ /g'| cut -d' ' -f4"
 
 #DOC: getMemoryTotal
 #DOC:   NAME
@@ -564,7 +564,7 @@ alias getCPUSpeed="cat /proc/cpuinfo | grep 'cpu MHz'|tail -1|sed 's/[ \t]\+/ /g
 #DOC:   DESCRIPTION
 #DOC:     The getMemoryTotal function returns MemTotal entry from /proc/cpuinfo.
 #DOC: 
-alias getMemoryTotal="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'| cut -d' ' -f2"
+alias getMemoryTotal="grep 'MemTotal:' /proc/meminfo | sed 's/[ \t]\+/ /g'| cut -d' ' -f2"
 
 #DOC: getMemoryUnit
 #DOC:   NAME
@@ -574,7 +574,7 @@ alias getMemoryTotal="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'
 #DOC:   DESCRIPTION
 #DOC:     The getMemoryUnit function returns the unit of memory by reading the 'MemTotal' entry from /proc/meminfo.
 #DOC: 
-alias getMemoryUnit="cat /proc/meminfo | grep 'MemTotal:' | sed 's/[ \t]\+/ /g'| cut -d' ' -f3"
+alias getMemoryUnit="grep 'MemTotal:' /proc/meminfo| sed 's/[ \t]\+/ /g'| cut -d' ' -f3"
 
 #DOC: untarAll
 #DOC:   NAME
@@ -927,3 +927,4 @@ folderFingerprint() {
 #20250606,UPDATED: backupFile - is verbose, returning the backup file name
 #20250712,CORRECTED: compareDirs - small string correctionns
 #20251202,CORRECTED: compareDirs - make function POSIX compatible by removing subshell substition as input for while loops or other commands
+#20260201,UPDATE: optimized all alliases which was abusing cat.
